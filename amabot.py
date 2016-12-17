@@ -22,13 +22,24 @@ class amabot:
     def __init__(self, bot):
         self.bot = bot
 
+    #"""Displays the given raid number in full, with all roles."""
+
+
     @commands.command(pass_context=True)
-    async def callsnow(self, ctx):
-        """ test"""
-        #"""Displays the given raid number in full, with all roles."""
+    async def mentionall(self, ctx):
+        """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a week."""
+        #open sheet 1, with form responses.
+        #loop thru all members, check if timestamp is greater than a week ago.
+        #send em all messages or mention them? messages are better, will change soon.
+        
         server = ctx.message.server
         member = server.get_member_named("Snow#4465")
         await self.bot.say(member.mention)
+
+
+
+
+        
 
     @commands.command()
     async def raidtimes(self):
