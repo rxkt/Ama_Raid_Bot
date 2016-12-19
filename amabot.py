@@ -1,4 +1,5 @@
 import discord
+import datetime
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -31,11 +32,32 @@ class amabot:
         #open sheet 1, with form responses.
         #loop thru all members, check if timestamp is greater than a week ago.
         #send em all messages or mention them? messages are better, will change soon.
-        
-        server = ctx.message.server
-        member = server.get_member_named("Snow#4465")
-        await self.bot.say(member.mention)
+        sh = gc.open("Raid info spreadsheet")
+        wsh = sh.worksheet("Info Parse")
 
+        
+        memberIndex = 2
+        memberList = list();
+        #loop through all members. if they have not updated their thing, PM them. ( we will add them to list for now )
+        while True:
+            #we want to avoid calling the spreadsheet data twice because the bot is slow enough already...
+            s = wsh.cell(memberIndex,1).value
+            if s == '':
+                break
+            s=s.split(' ')[0]
+            if s!= '':
+                #get the last updated date, and today
+                prevDate = datetime.datetime.strptime(s,"%m/%d/%Y")
+                todayDate = datetime.datetime.today()
+                #if the difference in days is greater than 6, add em to the list.
+                if abs((prevDate-todayDate).days) > 6:
+                    memberList.append( wsh.cell(memberIndex,3).value )
+            #next member 
+            memberIndex+=1
+        #server = ctx.message.server
+        #member = server.get_member_named("Snow#4465")
+        #await self.bot.say(memberList)
+        await self.bot.say(memberList)
 
 
 
