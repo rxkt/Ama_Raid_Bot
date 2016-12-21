@@ -1,34 +1,43 @@
 import discord
 import datetime
+import asyncio
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 scope = ['https://spreadsheets.google.com/feeds']
 
-credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
 
-gc = gspread.authorize(credentials)
 
 #formula: wsh.acell('b1').input_value
 
 from discord.ext import commands
 
+client = discord.Client()
+update_message = """
+Hello, please update your answers to Amaterasu's 30 man form. You can change your hours available, or add an alt that can do the raid.
 
+If nothing changed, please check your answers and click SUBMIT on the form to update the timestamp.
 
-class amabot:
+You will continue to receive these notifications until you update your answers to the form. If you need the link to your answers, PM Kyangi on discord.
+
+"""
+
+class amabot(discord.Client):
     """Cog that scrapes Amaterasu's Raid spreadsheets!"""
     
     
     def __init__(self, bot):
         self.bot = bot
-
     #"""Displays the given raid number in full, with all roles."""
-
-
+        
     @commands.command(pass_context=True)
+    @client.event
     async def mentionall(self, ctx):
         """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a week."""
+
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
         #open sheet 1, with form responses.
         #loop thru all members, check if timestamp is greater than a week ago.
         #send em all messages or mention them? messages are better, will change soon.
@@ -52,20 +61,35 @@ class amabot:
                 #if the difference in days is greater than 6, add em to the list.
                 if abs((prevDate-todayDate).days) > 6:
                     memberList.append( wsh.cell(memberIndex,3).value )
-            #next member 
+
+                    ''' uncomment as soon as we need this running
+                    server = ctx.message.server
+                    member = server.get_member_named( wsh.cell(memberIndex,2).value )
+                    await self.bot.send_message(member, update_message)
+                    '''
             memberIndex+=1
-        #server = ctx.message.server
-        #member = server.get_member_named("Snow#4465")
-        #await self.bot.say(memberList)
+
+        '''debug, messages a member once
+        server = ctx.message.server
+        member = server.get_member_named("rxkt#2283")
+        await self.bot.send_message(member,update_message)
+        '''
+        
         await self.bot.say(memberList)
 
+    @commands.command(pass_context=True)
+    @client.event
+    async def pm_me(self,ctx):
+        server = ctx.message.server
+        member = server.get_member_named("rxkt#2283")
+        await self.bot.send_message(member, update_message)
 
-
-        
 
     @commands.command()
     async def raidtimes(self):
         "Lists all the raid times that have not yet occurred."
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
         sh = gc.open("Raid info spreadsheet")
         wsh = sh.worksheet("raid_lineup")
 
