@@ -29,7 +29,6 @@ class amabot(discord.Client):
     
     def __init__(self, bot):
         self.bot = bot
-    #"""Displays the given raid number in full, with all roles."""
         
     @commands.command(pass_context=True)
     @client.event
@@ -79,11 +78,30 @@ class amabot(discord.Client):
 
     @commands.command(pass_context=True)
     @client.event
-    async def pm_me(self,ctx):
+    async def pm_kyang(self,ctx):
+        "Test function"
         server = ctx.message.server
-        member = server.get_member_named("rxkt#2283")
-        await self.bot.send_message(member, update_message)
+        member = server.get_member_named("kyangi")
+        await self.bot.send_message(member, "hi this is bot")
 
+        
+    #assigns the role given.
+    #adding this because the other bot may be unreliable
+    #case sensitive for now, will update algorithm to get all roles instead of using dynamic array
+    @commands.command(pass_context=True)
+    async def iam(self, ctx: commands.Context, role: discord.Role ):
+        "List of possible roles :\n DPS, Healer, Tank, Priest, Mystic, Overwatch, ERP, League, Weeb. \n\n CASE SENSITIVE."
+        author = ctx.message.author
+        roles = [ 'DPS' , 'Healer', 'Tank' , 'Priest' , 'Mystic' , 'Overwatch' , 'ERP' , 'League' , 'Weeb' ]
+        for x in roles:
+            #.lower() is unneeded... but keeping for updated algo
+            if str(role).lower() == x.lower():
+                await self.bot.add_roles(author, role)
+                await self.bot.say(":ok: You now have the " + x + " role.")
+                return
+        
+        await self.bot.say("Not a valid role. ")
+        
 
     @commands.command()
     async def raidtimes(self):
