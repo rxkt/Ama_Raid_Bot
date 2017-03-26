@@ -8,20 +8,20 @@ from oauth2client.service_account import ServiceAccountCredentials
 scope = ['https://spreadsheets.google.com/feeds']
 
 
-
-#formula: wsh.acell('b1').input_value
-
 from discord.ext import commands
 
 client = discord.Client()
+
+
 update_message = """
-Hello, please update your answers to Amaterasu's 30 man form. You can change your hours available, or add an alt that can do the raid.
+Hello, please update your answers to Amaterasu's 30 man form. You can change your hours available or edit your characters. IF YOU REMOVE A CHARACTER, PLEASE PM XPECT ON DISCORD.
 
 If nothing changed, you still need to submit the form again (click SUBMIT on the form to update the timestamp).
 
-You will continue to receive these notifications until you update your answers to the form. If you need the link to your answers, PM Kyangi on discord.
+If you already updated your form for next week, ignore this message.
 
-"""
+P.S
+Don't change your discord ID. The bot wil not PM you, your schedule can be messed up, and you risk getting yellow/orange cards. Change your nickname instead."""
 
 class amabot(discord.Client):
     """Cog that scrapes Amaterasu's Raid spreadsheets!"""
@@ -35,8 +35,8 @@ class amabot(discord.Client):
 
     @commands.command(pass_context=True)
     @client.event
-    async def mentionall(self, ctx):
-        """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a week."""
+    async def notify(self, ctx):
+        """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time."""
 
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
         gc = gspread.authorize(credentials)
@@ -44,57 +44,65 @@ class amabot(discord.Client):
         wsh = sh.worksheet("Info Parse")
         await self.bot.say("opened sheet . . .")
         
-        memberIndex = 24
+        memberIndex = 2
         memberList = list()
         todayDate = datetime.datetime.today()
         unmessaged_list = list()
         
         while True:
-            #we want to avoid calling the spreadsheet data twice because the bot is slow enough already...
             s = wsh.cell(memberIndex,1).value
             name = wsh.cell(memberIndex, 3).value
+            link = wsh.cell(memberIndex, 4).value
+            
             if s == '':
                 break
             s=s.split(' ')[0]
+            
             if s!= '':
-                prevDate = datetime.datetime.strptime(s,"%m/%d/%Y")
-                #if the difference in days is greater than 6, add em to the list.
-                if abs((prevDate-todayDate).days) > 6:
-                    memberList.append( name)
+                try:
+                    prevDate = datetime.datetime.strptime(s,"%m/%d/%Y")
+                except:
+                    if s=='#REF!':
+                        await self.bot.say("#REF! found on line %d. Delete the row in the spreadsheet" % (memberIndex))
+                    else:
+                        await self.bot.say("Unknown error parsing timestamp.")
+                        
+                if abs((prevDate-todayDate).days) > 1: #exclude people who have updated yesterday?
                     
-                    #''' uncomment as soon as we need this running
+                    memberList.append( name)
                     server = ctx.message.server
                     member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
                     try:
-                        await self.bot.send_message(member, update_message)
-                        #await self.bot.say("Messaged " + name )
+                        if link != '':
+                            await self.bot.send_message(member, "%s\n\n Your link is: %s\nIf you happen to have the wrong link, PM an officer on discord." % (update_message,link))
+                        else:
+                            await self.bot.send_message(member, "%s\n\n Your link is not available right now. PM an officer for assistance updating your sheets." % (update_message))
+                        await self.bot.say("Messaged " + name )
+                            
                     except:
-                        #await self.bot.say("Could not message " + name )
+                        await self.bot.say("Could not message " + name )
                         unmessaged_list.append( name )
                         
-                    #'''
             memberIndex+=1
 
-        '''debug, messages a member once
-        server = ctx.message.server
-        member = server.get_member_named("rxkt#2283")
-        await self.bot.send_message(member,update_message)
-        '''
-        
-        await self.bot.say(unmessaged_list)
 
+        if len(unmessaged_list) > 0:
+            await self.bot.say(unmessaged_list)
+        else:
+            await self.bot.say("Everyone messaged.")
+
+    #test function.
     @commands.command(pass_context=True)
     @client.event
     async def pm(self,ctx,user=discord.Member):
         "Test function"
         server = ctx.message.server
+        #test using IDs instead of name#discrim
         member = server.get_member_named(user)
         await self.bot.send_message(member.id, update_message)
 
         
     #assigns the role given.
-    #adding this because the other bot may be unreliable
-    #case sensitive for now, will update algorithm to get all roles instead of using dynamic array
     @commands.command(pass_context=True)
     async def iam(self, ctx: commands.Context, role: discord.Role ):
         "List of possible roles :\n DPS, Healer, Tank, Priest, Mystic, Overwatch, ERP, League, Weeb. \n\n CASE SENSITIVE."
@@ -109,14 +117,14 @@ class amabot(discord.Client):
         
         await self.bot.say("Not a valid role. ")
         
-
+    #useless for now, may want to put this into a PM. Lists all raids not yet occurred.
     @commands.command()
     async def raidtimes(self):
-        "Lists all the raid times that have not yet occurred."
+        "Lists all the raid that have not yet occurred."
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
         gc = gspread.authorize(credentials)
         sh = gc.open("Raid info spreadsheet")
-        wsh = sh.worksheet("raid_lineup")
+        wsh = sh.worksheet("raid_lineup2")
 
         raidIndex = 1
         raidList = list();
