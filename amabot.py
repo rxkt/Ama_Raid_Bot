@@ -6,9 +6,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 
 
-
-client = discord.Client()
-
 scope = ['https://spreadsheets.google.com/feeds']
 
 update_message = """
@@ -36,7 +33,6 @@ class amabot(discord.Client):
 
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
     @commands.command(pass_context=True)
-    @client.event
     async def notify(self, ctx):
         """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time.""" 
 
@@ -95,7 +91,6 @@ class amabot(discord.Client):
 
     #Sends a discord message to the user that called this function with their respective link to their google forms
     @commands.command(pass_context=True)
-    @client.event
     async def link(self, ctx, *, user: discord.Member=None):
         "Retrieves the link to the form for signing up."
 
@@ -120,7 +115,7 @@ class amabot(discord.Client):
             await self.bot.say("You are not on the spreadsheet for Harrowhold raids.")
 
     @commands.command(pass_context=True)
-    @client.event
+    #@client.event
     async def test(self, ctx, *, user: discord.Member=None):
         "Test function for members"
         author = ctx.message.author
@@ -130,7 +125,6 @@ class amabot(discord.Client):
     #Sends a discord message to the user that called this function
     #with their respective performance ratings
     @commands.command(pass_context=True)
-    @client.event
     async def pp(self, ctx, *, user:discord.Member=None):
         "Returns your performance rating of all your characters for raids in Phase 4."
 
@@ -151,14 +145,48 @@ class amabot(discord.Client):
             await self.bot.say("You are not on the spreadsheet for Harrowhold raids.")
             return
 
-        await self.bot.say("Opened 'consolidated names'...")
+        await self.bot.say("Finding your character names...")
         wsh_names = sh.worksheet("Consolidated Names")
         main_names = wsh_names.col_values(6)
         row_index = main_names.index(name)+1
         
         alt_names = [item for item in wsh_names.row_values(row_index) if item!= ''][1:]
+
+        await self.bot.say("Searching your statistics...")
+        wsh_pp = sh.worksheet("PP Calculation2")
+        pp_list = []
+        runs=0
+        for each in alt_names:
+            charpp_list = []
+            name_cell = wsh_pp.find(each)
+            charpp_list.append(each)
+            for x in range(4,7):
+                charpp_list.append(wsh_pp.cell(name_cell.row,x).value )
+            pp_list.append(charpp_list)
+            runs+=float(charpp_list[3])
+        
+        
         
 
+        
+        message = "These are your performance scores for your characters in HH20 P4:\n"
+        message+= "Note: Feedback may be slightly inaccurate for characters with a low number of attempts.\n"
+        for each in pp_list:
+            message+= "**Name: {d[0]}**\n\t Deaths: {d[2]}\n\t Attempts: {d[3]}\n\t".format(d=each)
+            if runs<50:
+                await self.bot.send_message(user,"You do not have many runs. Please attend practice runs for some experience.")
+            elif float(each[3])==0:
+                message+= "This character has no runs yet.\n"
+            elif float(each[1])>=7.5:
+                message+= "This character is performing wonderfully! Keep up the good work!\n"
+            elif float(each[1]) >=5:
+                message+= "This character is doing decently, but you can still improve your death rate or do more runs.\n"
+            elif float(ach[1]) >=2.5:
+                message+= "This character has a bit of deaths. Keep working on staying alive!\n"
+            else:
+                message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n"
+
+        await self.bot.send_message(user,message)
         
         #deaths
         #number of attempts
@@ -170,7 +198,6 @@ class amabot(discord.Client):
 
     #Assigns the discord IDs for each given discord tag on the spreadsheet
     @commands.command(pass_context=True)
-    @client.event
     async def assign_ids(self, ctx, *, user: discord.Member=None):
         "Updates the ID of every discord member on the spreadsheet."
 
@@ -224,3 +251,4 @@ class amabot(discord.Client):
 
 def setup(bot):
     bot.add_cog(amabot(bot))
+
