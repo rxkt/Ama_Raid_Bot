@@ -92,12 +92,11 @@ class amabot(discord.Client):
 
     #Sends a discord message to the user that called this function with their respective link to their google forms
     @commands.command(pass_context=True)
-    async def link(self, ctx, *, user: discord.Member=None):
+    async def link(self, ctx):
         "Retrieves the link to the form for signing up."
 
         author = ctx.message.author
-        if not user:
-            user = author
+
 
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
         gc = gspread.authorize(credentials)
@@ -106,13 +105,13 @@ class amabot(discord.Client):
         #debug
         #await self.bot.say("opened sheet . . .")
         try:
-            cell = wsh.find(str(user.id))
+            cell = wsh.find(str(author.id))
             link = wsh.cell(cell.row,4).value
-            await self.bot.send_message(user, link)
+            await self.bot.send_message(author, link)
             await self.bot.say("Sent you the link, check your DMs <:blobshiro:331164843417665539>")
         except:
-            if 'Amaterasu' in [str(i) for i in user.roles]:
-                await self.bot.send_message(user,no_member_found)
+            if 'Amaterasu' in [str(i) for i in author.roles]:
+                await self.bot.send_message(author,no_member_found)
             await self.bot.say("You are not on the spreadsheet for Harrowhold raids.")
 
     @commands.command(pass_context=True)
@@ -121,16 +120,15 @@ class amabot(discord.Client):
         author = ctx.message.author
         if not user:
             user = author
+        #someone else can be used as the parameter to bot call here
             
     #Sends a discord message to the user that called this function
     #with their respective performance ratings
     @commands.command(pass_context=True)
-    async def pp(self, ctx, *, user:discord.Member=None):
+    async def pp(self, ctx):
         "Returns your performance rating of all your characters for raids in Phase 4."
 
         author = ctx.message.author
-        if not user:
-            user = author
 
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
         gc = gspread.authorize(credentials)
@@ -138,7 +136,7 @@ class amabot(discord.Client):
         wsh = sh.worksheet("InfoParse")
         
         try:
-            cell = wsh.find(str(user.id))
+            cell = wsh.find(str(author.id))
             name = wsh.cell(cell.row,3).value
 
         except:
@@ -198,13 +196,13 @@ class amabot(discord.Client):
             else:
                 message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n"
 
-        await self.bot.send_message(user,message)
+        await self.bot.send_message(author,message)
         
     
 
     #Assigns the discord IDs for each given discord tag on the spreadsheet
     @commands.command(pass_context=True)
-    async def assign_ids(self, ctx, *, user: discord.Member=None):
+    async def assign_ids(self, ctx):
         "Updates the ID of every discord member on the spreadsheet."
 
         server=ctx.message.server
