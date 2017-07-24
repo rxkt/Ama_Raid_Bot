@@ -9,7 +9,7 @@ from discord.ext import commands
 scope = ['https://spreadsheets.google.com/feeds']
 
 update_message = """
-Hello, please update your answers to Amaterasu's 30 man form. IF YOU REMOVE A CHARACTER, PLEASE PM XPECT ON DISCORD.
+Hello, please update your answers to Amaterasu's 20 man form. IF YOU REMOVE A CHARACTER, PLEASE PM XPECT ON DISCORD.
 
 IF YOU DO NOT EDIT YOUR FORM, YOUR DATA FROM THE PREVIOUS WEEK WILL BE USED.
 """
@@ -65,8 +65,9 @@ class amabot(discord.Client):
                         await self.bot.say("#REF! found on line %d. Delete the row in the spreadsheet" % (memberIndex))
                     else:
                         await self.bot.say("Unknown error parsing timestamp.")
-                        
-                if abs((prevDate-todayDate).days) > 1: #exclude people who have updated yesterday?
+
+                #script runs on saturday, new raid week on tuesday. 4 days sounds good
+                if abs((prevDate-todayDate).days) > 3: 
                     
                     memberList.append( name)
                     member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
@@ -115,7 +116,6 @@ class amabot(discord.Client):
             await self.bot.say("You are not on the spreadsheet for Harrowhold raids.")
 
     @commands.command(pass_context=True)
-    #@client.event
     async def test(self, ctx, *, user: discord.Member=None):
         "Test function for members"
         author = ctx.message.author
