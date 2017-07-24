@@ -150,22 +150,34 @@ class amabot(discord.Client):
         main_names = wsh_names.col_values(6)
         row_index = main_names.index(name)+1
         
-        alt_names = [item for item in wsh_names.row_values(row_index) if item!= ''][1:]
+        names_in_row = [item for item in wsh_names.row_values(row_index) if item!= '']
+        main_index = names_in_row.index(name)
+        alt_names = names_in_row[main_index:]
 
         await self.bot.say("Searching your statistics...")
         wsh_pp = sh.worksheet("PP Calculation2")
         pp_list = []
         runs=0
+        #to solve multiple occurences in spreadsheet due to unsorted items, wsh.find was not used
+        search_list = wsh_pp.col_values(2)[1:] #trim off the table header
+        
+        
         for each in alt_names:
             charpp_list = []
-            name_cell = wsh_pp.find(each)
+            
+            #to solve multiple occurences in spreadsheet
+            row_number = search_list.index(each)+2
+            
             charpp_list.append(each)
             for x in range(4,7):
-                charpp_list.append(wsh_pp.cell(name_cell.row,x).value )
+                charpp_list.append(wsh_pp.cell(row_number,x).value )
             pp_list.append(charpp_list)
-            runs+=float(charpp_list[3])
-        
-        
+            
+            try:
+                runs+=float(charpp_list[3])
+            except:
+                await self.bot.say("The PP updating scripts are currently running. Please try again at a later time.")
+                return
         
 
         
@@ -181,18 +193,12 @@ class amabot(discord.Client):
                 message+= "This character is performing wonderfully! Keep up the good work!\n"
             elif float(each[1]) >=5:
                 message+= "This character is doing decently, but you can still improve your death rate or do more runs.\n"
-            elif float(ach[1]) >=2.5:
+            elif float(each[1]) >=2.5:
                 message+= "This character has a bit of deaths. Keep working on staying alive!\n"
             else:
                 message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n"
 
         await self.bot.send_message(user,message)
-        
-        #deaths
-        #number of attempts
-        #pp, calculation
-        #if no runs-> no runs yet! 
-
         
     
 
