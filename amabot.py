@@ -9,7 +9,7 @@ from discord.ext import commands
 scope = ['https://spreadsheets.google.com/feeds']
 
 update_message = """
-Hello, please update your answers to Amaterasu's 20 man form. IF YOU REMOVE A CHARACTER, PLEASE PM XPECT ON DISCORD.
+Hello, please update your answers to Amaterasu's 20 man form. IF YOU REMOVE/RETIRE A CHARACTER, PLEASE PM XPECT ON DISCORD.
 
 IF YOU DO NOT EDIT YOUR FORM, YOUR DATA FROM THE PREVIOUS WEEK WILL BE USED.
 """
@@ -30,7 +30,7 @@ class amabot(discord.Client):
     def is_me(m):
         return m.author == client.user
 
-
+    #to-do: server.get_member(userID)
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
     @commands.command(pass_context=True)
     async def notify(self, ctx):
@@ -164,18 +164,21 @@ class amabot(discord.Client):
             charpp_list = []
             
             #to solve multiple occurences in spreadsheet
-            row_number = search_list.index(each)+2
-            
-            charpp_list.append(each)
-            for x in range(4,7):
-                charpp_list.append(wsh_pp.cell(row_number,x).value )
-            pp_list.append(charpp_list)
-            
             try:
-                runs+=float(charpp_list[3])
+                row_number = search_list.index(each)+2
+            
+                charpp_list.append(each)
+                for x in range(4,7):
+                    charpp_list.append(wsh_pp.cell(row_number,x).value )
+                pp_list.append(charpp_list)
+                
+                try:
+                    runs+=float(charpp_list[3])
+                except:
+                    await self.bot.say("The PP updating scripts are currently running. Please try again at a later time.")
+                    return
             except:
-                await self.bot.say("The PP updating scripts are currently running. Please try again at a later time.")
-                return
+                pass
         
 
         
@@ -184,7 +187,7 @@ class amabot(discord.Client):
         for each in pp_list:
             message+= "**Name: {d[0]}**\n\t Deaths: {d[2]}\n\t Attempts: {d[3]}\n\t".format(d=each)
             if runs<50:
-                await self.bot.send_message(user,"You do not have many runs. Please attend practice runs for some experience.")
+                await self.bot.send_message(author,"You do not have many runs. Please attend practice runs for some experience.")
             elif float(each[3])==0:
                 message+= "This character has no runs yet.\n"
             elif float(each[1])>=7.5:
@@ -231,7 +234,45 @@ class amabot(discord.Client):
             memberIndex+=1
         
         
+
+    #Notifies the nth raid on the spreadsheet (in case for raids created at the last moment.)
+    @commands.command(pass_context=True)
+    async def notify_raid(self, ctx,raid_index:int,*string):
+        "Notifies the nth raid with a given string."
+
+        server=ctx.message.server
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("InfoParse")
+        wsh_raids = sh.worksheet("raid lineup")
+
+        await self.bot.say("opened sheets . . .")
+        raid_col = (raid_index-1)*5+1
+        raid_row = 3 #first row is date, second is table header, 3rd is where characters begin.
+
+        string_header= "This is a message for the raid on %s.\n" % wsh_raids.cell(1,raid_col).value
+
+        characters = []
+        for col in range(0,4):
+            for row in range(0,10):
+                name=wsh_raids.cell(row+raid_row,col+raid_col).value
+                if name != '':
+                    try:
+                        cell = wsh.find(name)
+                        id_target = wsh.cell(cell.row,5).value
+                        member = server.get_member(id_target)
+                        await self.bot.send_message( member, string_header + ' '.join(list(string)) )
+                        #await self.bot.say("Sent message to %s, who is supposed to be on %s." % (member.name,name))
+                    except:
+                        await self.bot.say("Could not find %s on roster." % name)
+
+                    
+        await self.bot.say("Finished")
         
+        
+
+    
     # Lists all raids not yet occurred. useless for now, may want to put this into a PM.
     @commands.command()
     async def raidtimes(self):
