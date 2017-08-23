@@ -33,7 +33,7 @@ class amabot(discord.Client):
     #to-do: server.get_member(userID)
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
     @commands.command(pass_context=True)
-    async def notify(self, ctx):
+    async def notify(self, ctx,memberIndex = 2):
         """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time.""" 
 
         server = ctx.message.server
@@ -43,7 +43,7 @@ class amabot(discord.Client):
         wsh = sh.worksheet("InfoParse")
         await self.bot.say("opened sheet . . .")
         
-        memberIndex = 2
+        
         memberList = list()
         todayDate = datetime.datetime.today()
         unmessaged_list = list()
@@ -62,7 +62,7 @@ class amabot(discord.Client):
                     prevDate = datetime.datetime.strptime(s,"%m/%d/%Y")
                 except:
                     if s=='#REF!':
-                        await self.bot.say("#REF! found on line %d. Delete the row in the spreadsheet" % (memberIndex))
+                        await self.bot.say("#REF! found on line {}. Delete the row in the spreadsheet".format(memberIndex))
                     else:
                         await self.bot.say("Unknown error parsing timestamp.")
 
@@ -71,16 +71,28 @@ class amabot(discord.Client):
                     
                     memberList.append( name)
                     member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
-                    try:
-                        if link != '':
-                            await self.bot.send_message(member, "%s\n\n Your link is: %s\nIf you happen to have the wrong link, PM an officer on discord." % (update_message,link))
+
+                    if member == None:
+                        #given ID failed, let's try using the ID from assign_ids 
+                        member = server.get_member(id_target)
+
+                    if member != None:
+                        if link not in {'','undefined'}:
+                            await self.bot.send_message(member, "{}\n\n Your link is: {}\nIf you happen to have the wrong link, PM an officer on discord.".format(update_message,link))
+                            await self.bot.say("Messaged {}, line {}".format(name,memberIndex) )
                         else:
-                            await self.bot.send_message(member, "%s\n\n Your link is not available right now. PM an officer for assistance updating your sheets." % (update_message))
-                        await self.bot.say("Messaged " + name )
+                            if link == '':
+                                await self.bot.send_message(member, "You do not have a link now. PM Kyang.")
+                            else:
+                                await self.bot.send_message(member, "PM Kyang and tell him that you have an undefined link.")
                             
-                    except:
-                        await self.bot.say("Could not message " + name )
-                        unmessaged_list.append( name )          
+                            
+                    else:
+                        await self.bot.say("Unable to message {}.".format(name) )
+                        unmessaged_list.append( name )
+
+
+                        
             memberIndex+=1
 
 
@@ -199,13 +211,18 @@ class amabot(discord.Client):
             else:
                 message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n"
 
-        await self.bot.send_message(author,message)
-        
+        if len(pp_list)!= 0:
+            await self.bot.send_message(author,message)
+        else:
+            await self.bot.send_message(author,"The system is currently under maintenance. Check back later.")
     
 
+    
+
+    
     #Assigns the discord IDs for each given discord tag on the spreadsheet
     @commands.command(pass_context=True)
-    async def assign_ids(self, ctx):
+    async def assign_ids(self, ctx, memberIndex=2):
         "Updates the ID of every discord member on the spreadsheet."
 
         server=ctx.message.server
@@ -216,7 +233,7 @@ class amabot(discord.Client):
         wsh = sh.worksheet("InfoParse")
         await self.bot.say("opened sheet . . .")
 
-        memberIndex=2
+        
         while True:
             timestamp = wsh.cell(memberIndex,1).value
             discord_tag = wsh.cell(memberIndex, 2).value
@@ -226,10 +243,10 @@ class amabot(discord.Client):
             
             member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
             if member==None:
-                await self.bot.say("Did not update ID for %s" % name)
+                await self.bot.say("Did not update ID for {}".format(name) )
             else:
                 wsh.update_cell(memberIndex, 5, member.id)
-                await self.bot.say("Updated ID for %s" % name)
+                await self.bot.say("Updated ID for {}".format(name) )
 
             memberIndex+=1
         
@@ -251,7 +268,7 @@ class amabot(discord.Client):
         raid_col = (raid_index-1)*5+1
         raid_row = 3 #first row is date, second is table header, 3rd is where characters begin.
 
-        string_header= "This is a message for the raid on %s.\n" % wsh_raids.cell(1,raid_col).value
+        string_header= "This is a message for the raid on {}.\n".format(wsh_raids.cell(1,raid_col).value)
 
         characters = []
         for col in range(0,4):
@@ -265,13 +282,27 @@ class amabot(discord.Client):
                         await self.bot.send_message( member, string_header + ' '.join(list(string)) )
                         #await self.bot.say("Sent message to %s, who is supposed to be on %s." % (member.name,name))
                     except:
-                        await self.bot.say("Could not find %s on roster." % name)
+                        await self.bot.say("Could not find {} on roster.".format(name) )
 
                     
         await self.bot.say("Finished")
         
         
+    #spits out a certain cell, test func
+    @commands.command(pass_context=True)
+    async def spit_cell(self,ctx,row,col,*sh_name):
+        "Spits out a certain cell on a certain spreadsheet"
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("InfoParse")
 
+        await self.bot.say("opening {}".format( ' '.join(list(sh_name))) )
+        wsh_ = sh.worksheet(' '.join(list(string)) )
+        
+        await self.bot.say(wsh_.cell(row,col).value)
+        
     
     # Lists all raids not yet occurred. useless for now, may want to put this into a PM.
     @commands.command()
@@ -289,10 +320,10 @@ class amabot(discord.Client):
         raidTimes=""
         
         while (wsh.cell(1,raidIndex).value != '' ):
-            raidTimes+= "%d) %s\n " % ( (raidIndex/5+1) , wsh.cell(1,raidIndex).value )
+            raidTimes+= "{}) {}\n ".format( (raidIndex/5+1) , wsh.cell(1,raidIndex).value )
             raidIndex+=5
 
-        await self.bot.say("There are " + str( int(raidIndex/5) ) + " raids this week.\n" + raidTimes)
+        await self.bot.say("There are {} raids this week.\n{}".format(str( int(raidIndex/5) ), raidTimes ) )
 
 def setup(bot):
     bot.add_cog(amabot(bot))
