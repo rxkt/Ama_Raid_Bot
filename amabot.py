@@ -188,9 +188,9 @@ class amabot(discord.Client):
             elif float(each[1]) >=5:
                 message+= "This character is doing decently, but you can still improve your death rate or do more runs.\n"
             elif float(each[1]) >=2.5:
-                message+= "This character has a bit of deaths. Keep working on staying alive!\n"
+                message+= "This character has a bit of deaths or needs more runs. Try to get some more practice in!\n"
             else:
-                message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n"
+                message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n" 
 
         if len(pp_list)!= 0:
             await self.bot.send_message(author,message)
@@ -266,7 +266,7 @@ class amabot(discord.Client):
                     except:
                         await self.bot.say("Unable to find {} on roster.".format(name) )
             
-        await self.bot.say("Finished")
+        await self.bot.say("Finished") 
 
 
     @commands.command(pass_context=True)
