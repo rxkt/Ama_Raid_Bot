@@ -5,6 +5,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
 import webbrowser
+import re
 from __main__ import settings
 
 scope = ['https://spreadsheets.google.com/feeds']
@@ -231,6 +232,7 @@ class amabot(discord.Client):
             memberIndex+=1
         
         
+        
 
     #Notifies the nth raid on the spreadsheet (in case for raids created at the last moment.)
     @commands.command(pass_context=True)
@@ -243,30 +245,29 @@ class amabot(discord.Client):
         sh = gc.open("20man raid sheet")
         wsh = sh.worksheet("InfoParse")
         wsh_raids = sh.worksheet("raid lineup")
-
         await self.bot.say("opened sheets . . .")
         raid_col = (raid_index-1)*5+1
-        raid_row = 3 #first row is date, second is table header, 3rd is where characters begin.
+        raid_row = 3 
 
-        string_header= "This is a message for the raid on {}.\n".format(wsh_raids.cell(1,raid_col).value)
+        string_header= "\nThis is a message for the raid on {}.\n".format(wsh_raids.cell(1,raid_col).value)
 
-        characters = []
-        for col in range(0,4):
-            for row in range(0,10):
-                name=wsh_raids.cell(row+raid_row,col+raid_col).value
-                if name != '':
+        #get the characters we want to message
+        characters = [x.value for x in wsh_raids.range(raid_row,raid_col,raid_row+9,raid_col+3) if x.value!= "" ]
+        #download all the data we search through offline so we don't need to keep looking for it... in 2d list form
+        data = [x for x in wsh.get_all_values()[1:] if x[0] != ""]
+        for name in characters:
+            r = re.compile(name,re.IGNORECASE)
+            for each in data:
+                results = filter(r.search, each)
+                if len( list(results) ) > 0:
                     try:
-                        cell = wsh.find(name)
-                        id_target = wsh.cell(cell.row,5).value
-                        member = server.get_member(id_target)
-                        await self.bot.send_message( member, string_header + ' '.join(list(string)) )
-                        #await self.bot.say("Sent message to %s, who is supposed to be on %s." % (member.name,name))
+                        member = server.get_member(each[4])
+                        await self.bot.send_message( server.get_member(each[4]), string_header + ' '.join(list(string)) ) 
                     except:
                         await self.bot.say("Unable to find {} on roster.".format(name) )
-
-                    
+            
         await self.bot.say("Finished")
-        
+
 
     @commands.command(pass_context=True)
     async def alert_reds(self, ctx):
