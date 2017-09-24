@@ -4,21 +4,22 @@ import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from discord.ext import commands
-
+import webbrowser
+from __main__ import settings
 
 scope = ['https://spreadsheets.google.com/feeds']
 
 update_message = """
-Hello, please update your answers to Amaterasu's 20 man form. IF YOU REMOVE/RETIRE A CHARACTER, PLEASE PM XPECT ON DISCORD.
+Hello, please update your answers to Amaterasu's 20 man form.
 
-IF YOU DO NOT EDIT YOUR FORM, YOUR DATA FROM THE PREVIOUS WEEK WILL BE USED.
-"""
+Form update rules: {}
+""".format("https://docs.google.com/document/d/1Ws-GZwjvR2rOaZHfQue6qGipaH7d0ME3Jlvn-F1VJSA/edit")
 
 no_member_found = """Unable to find you in the spreadsheet. Please go to
 
-<%s>
+{}
 
-to sign up for raids.""" % "https://docs.google.com/forms/d/e/1FAIpQLSfr_P7wEhtq85H2mt7VO2_DETBhK-N-ihg7bBImcwsq88GOEQ/viewform"
+to sign up for raids.""".format("https://docs.google.com/forms/d/e/1FAIpQLSfr_P7wEhtq85H2mt7VO2_DETBhK-N-ihg7bBImcwsq88GOEQ/viewform")
 
 class amabot(discord.Client):
     """Cog that scrapes Amaterasu's Raid spreadsheets!"""
@@ -30,7 +31,7 @@ class amabot(discord.Client):
     def is_me(m):
         return m.author == client.user
 
-    #to-do: server.get_member(userID)
+
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
     @commands.command(pass_context=True)
     async def notify(self, ctx,memberIndex = 2):
@@ -42,66 +43,45 @@ class amabot(discord.Client):
         sh = gc.open("20man raid sheet")
         wsh = sh.worksheet("InfoParse")
         await self.bot.say("opened sheet . . .")
-        
-        
-        memberList = list()
         todayDate = datetime.datetime.today()
-        unmessaged_list = list()
         
-        while True:
-            s = wsh.cell(memberIndex,1).value
-            name = wsh.cell(memberIndex, 3).value
-            link = wsh.cell(memberIndex, 4).value
+        cells=[x for x in wsh.get_all_values()[memberIndex-1:] if x[0]!=""]
+        
+        for each in cells:
+            prevDate = datetime.datetime.strptime(each[0],"%m/%d/%Y %H:%M:%S")
             
-            if s == '':
-                break
-            s=s.split(' ')[0]
-            
-            if s!= '':
-                try:
-                    prevDate = datetime.datetime.strptime(s,"%m/%d/%Y")
-                except:
-                    if s=='#REF!':
-                        await self.bot.say("#REF! found on line {}. Delete the row in the spreadsheet".format(memberIndex))
-                    else:
-                        await self.bot.say("Unknown error parsing timestamp.")
+            if abs((prevDate-todayDate).days) > 4:
+                member = server.get_member_named( each[1].strip(' ') )
+                if member == None:
+                    #given discord tag failed, let's try using the ID from assign_ids 
+                    member = server.get_member( each[4].strip(' ') )
 
-                #script runs on saturday, new raid week on tuesday. 4 days sounds good
-                if abs((prevDate-todayDate).days) > 3: 
-                    
-                    memberList.append( name)
-                    member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
-
-                    if member == None:
-                        #given ID failed, let's try using the ID from assign_ids 
-                        member = server.get_member(id_target)
-
-                    if member != None:
-                        if link not in {'','undefined'}:
+                if member != None:
+                    if each[3] not in {'','undefined'}:
+                        try:
                             await self.bot.send_message(member, "{}\n\n Your link is: {}\nIf you happen to have the wrong link, PM an officer on discord.".format(update_message,link))
-                            await self.bot.say("Messaged {}, line {}".format(name,memberIndex) )
-                        else:
+                            #await self.bot.say("Messaged {}, line {}".format(each[2],memberIndex) )
+                        except:
+                            await self.bot.say("Could not message {}, line {}".format(each[2],memberIndex) )
+                            
+                    else:
+                        try:
                             if link == '':
                                 await self.bot.send_message(member, "You do not have a link now. PM Kyang.")
+                                #await self.bot.say("doesnt have link")
                             else:
+                                #await self.bot.say("undefined link")
                                 await self.bot.send_message(member, "PM Kyang and tell him that you have an undefined link.")
-                            
-                            
-                    else:
-                        await self.bot.say("Unable to message {}.".format(name) )
-                        unmessaged_list.append( name )
-
-
-                        
+                        except:
+                            await self.bot.say("Could not message {}, line {}".format(each[2],memberIndex) )
+                else:
+                    await self.bot.say("{} not on roster.".format(each[2]) )
             memberIndex+=1
 
 
-        if len(unmessaged_list) > 0:
-            await self.bot.say(unmessaged_list)
-        else:
-            await self.bot.say("Everyone messaged.")
 
-
+        
+    
     #Sends a discord message to the user that called this function with their respective link to their google forms
     @commands.command(pass_context=True)
     async def link(self, ctx):
@@ -126,13 +106,7 @@ class amabot(discord.Client):
                 await self.bot.send_message(author,no_member_found)
             await self.bot.say("You are not on the spreadsheet for Harrowhold raids.")
 
-    @commands.command(pass_context=True)
-    async def test(self, ctx, *, user: discord.Member=None):
-        "Test function for members"
-        author = ctx.message.author
-        if not user:
-            user = author
-        #someone else can be used as the parameter to bot call here
+
             
     #Sends a discord message to the user that called this function
     #with their respective performance ratings
@@ -142,9 +116,15 @@ class amabot(discord.Client):
 
         author = ctx.message.author
 
-        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
-        gc = gspread.authorize(credentials)
-        sh = gc.open("20man raid sheet")
+        #i think google's servers are wonky recently, let's catch this so my eyes don't bleed looking at command prompt
+        try:
+            credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+            gc = gspread.authorize(credentials)
+            sh = gc.open("20man raid sheet")
+        except:
+            await self.bot.say("Unable to connect to Google Spreadsheets, please try again at a later time.")
+            return
+        
         wsh = sh.worksheet("InfoParse")
         
         try:
@@ -282,12 +262,235 @@ class amabot(discord.Client):
                         await self.bot.send_message( member, string_header + ' '.join(list(string)) )
                         #await self.bot.say("Sent message to %s, who is supposed to be on %s." % (member.name,name))
                     except:
-                        await self.bot.say("Could not find {} on roster.".format(name) )
+                        await self.bot.say("Unable to find {} on roster.".format(name) )
 
                     
         await self.bot.say("Finished")
         
+
+    @commands.command(pass_context=True)
+    async def alert_reds(self, ctx):
+        "Alerts all people with red cards to pay their fines if they haven't already."
+
+        server=ctx.message.server
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+        wsh = boogaloo.worksheet("Infractions")
+
+        await self.bot.say("going to open spreadsheet!")
+
+        #let's load all of the data locally because calling cells takes WAY TOO LONG
+        names = [name for name in wsh.col_values(11)[1:] if name!= '']
+        red_cards = [int(card) for card in wsh.col_values(14)[1:2+len(names)]]
+        transactions = [int(transaction) for transaction in wsh.col_values(15)[1:2+len(names)]]
+        await self.bot.say("Opening sheet...")
+        criminals = [names[index] for index in range(len(names)) if red_cards[index] > transactions[index] ]
+        #await self.bot.say(criminals)
+
+        #opening sheet with contact info
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("InfoParse")
+        for name in criminals:
+            try:
+                cell = wsh.find(name)
+                id_target = wsh.cell(cell.row,5).value
+                member = server.get_member(id_target)
+                index = names.index(name)
+
+                await self.bot.send_message( member,"You have {} red cards and have paid {} times.".format(red_cards[index], transactions[index] ) )
+                await self.bot.send_message( member,"You currently owe guild bank {}k.".format( 75*(red_cards[index]-transactions[index]) ) )
+                await self.bot.send_message( member, "Please pay ASAP or else you won't be able to participate in raids. Thanks!" )
+            except:
+                await self.bot.say("Unable to find {} on roster.".format(name) )
+        await self.bot.say("Finished sending out notifications.")
+
+
+
+    @commands.command(pass_context=True)
+    async def updatepp(self):
+        "Updates pp because google scripts run really slowly..."
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        #open ppsheet
+        pp_wsh = sh.worksheet("PP Calculation2")
+
         
+        await self.bot.say("opening pp sheets . . . ")
+        
+        #drag column P to column B, col Q to col C.
+        col_P = [x for x in pp_wsh.col_values(16)[1:] if x != "" ]
+        col_Q = pp_wsh.col_values(17)[1:1+len(col_P)]
+        #print ( len(col_P) )
+
+        col_B = pp_wsh.range(2,2,1+len(col_P),2)
+        col_C = pp_wsh.range(2,3,1+len(col_P),3)
+        
+        clear_range = pp_wsh.range(2,2,pp_wsh.row_count,7)
+        for cell in clear_range:
+            cell.value=""
+        pp_wsh.update_cells(clear_range)
+        await self.bot.say("cleared all previous data")
+        
+        for index in range(len(col_P)):
+            col_B[index].value = col_P[index]
+            col_C[index].value = col_Q[index]
+        pp_wsh.update_cells(col_B)
+        pp_wsh.update_cells(col_C)
+
+        await self.bot.say( "updated names & 30man pp")
+
+        await self.bot.say("opening death sheets . . .")
+
+        death_wsh = sh.worksheet("Death record2")
+        
+        #download names w/ attempts and deaths, strip with list comprehension get_all_values().
+        #keep in mind this is 0based indexing in a list, unlike spreadsheet
+        await self.bot.say("downloading cells...")
+        cells = death_wsh.get_all_values()
+        
+        await self.bot.say("removing useless columns...")
+        #a 2D list in the same format as the spreadsheet, but trimmed the top and empty columns. format: attempts,name,deaths
+        raids = [[cells[j][i] for i in range(len(cells[j])) if i%6 in [2,4,5] ] for j in range(3,len(cells)) ] 
+
+        #calculate pp
+        await self.bot.say("creating table to upload...")
+        #let's create the 2D list to project/upload back to google spreadsheets
+        pp_chart = [[0 if i >1 else col_Q[j] if i>0 else col_P[j] for i in range(6)] for j in range(len(col_P)) ]
+
+        await self.bot.say("transferring 30man PP to 20man PP...")
+        for x in range(len(pp_chart)):
+            #https://stackoverflow.com/questions/354038/how-do-i-check-if-a-string-is-a-number-float/23639915#23639915
+            #bless stack overflow, to be honest
+            if pp_chart[x][1].replace('.','',1).isdigit():
+                #30man to 20man pp scaling as directed by kyang
+                pp_chart[x][2]=(float(pp_chart[x][1])+10)/3
+            else:
+                pp_chart[x][2]=4
+            
+
+        await self.bot.say("calculating raid data and PP values...")
+
+
+        
+        #each raid is a column, not a row. our loop will be inverted...
+        for x in range(int(len(raids[0] )/3)):
+            current_raid = [row[x*3:(x+1)*3] for row in raids if row[x*3+1]!= '']
+            #if len(current_raid)>0:
+                #print (current_raid[0])
+
+            #translating code from kyang's calculatepp here
+            for each in current_raid:
+
+                #incase they have nothing in the spreadsheet
+                if each[2]=="":
+                    each[2]=0
+                if each[0]=="":
+                    each[0]=0
+                deaths= int(each[2])
+                attempts = int(each[0])
+                name = each[1]
+
+                #we found the row for that person
+                for item in pp_chart:
+                    if name in item:
+                        item[2] = float(item[2])
+                        
+                        item[3]+= deaths
+                        item[4]+= attempts
+                        a = -0.5
+                        
+                        for j in range(1,attempts+1):
+                            a+=deaths/attempts
+                            if a>0:
+                                item[2] *= 0.88
+                                a-=1
+                            item[2] = item[2]*.99 + .102
+                            
+        await self.bot.say("finalizing pp numbers and polishing the data...")
+        #end scaling as directed by kyang, let's also polish up the board
+        for item in pp_chart:
+            item[2] = format(item[2]*2-5,'.2f')
+            if item[3] ==0:
+                item[5]="No death"
+            else:
+                item[5]=format(item[4]/item[3],'.2f')
+        
+            if item[4] ==0:
+                item[5]="No attempt"
+
+        update_range = pp_wsh.range(2,2,1+len(pp_chart),7)
+        cols=len(pp_chart[0])
+        for index in range(len(update_range)):
+            print(index)
+            update_range[index].value=pp_chart[int(index/cols)][index%cols]
+            
+        await self.bot.say("uploading data")
+        pp_wsh.update_cells(update_range)
+        await self.bot.say("finished")
+
+
+        
+        """
+code written by kyang from google script editor:
+
+function updatepp(name, initialpp){
+    var pp
+    if (initialpp =="" || initialpp == "not enough runs")
+        {pp = 4}
+    else
+        {pp = (initialpp+10)/3}
+    var pplist = [pp, 0, 0]
+    var numberofraids = countraids()
+    for (i=1; i < numberofraids+1; i++){
+        pplist = calculatepp(name, getdeathrange(i), pplist, i)
+    }
+    return pplist
+}
+
+function calculatepp(name, range, pplist, raidnumber){
+    for (var i=1 ; i<range.getNumRows()+1;i++){
+       if (range.getCell(i, 3).getValue().toString().toLowerCase()==name.toString().toLowerCase())
+       {
+         var ndeaths = range.getCell(i,4).getValue()
+         var nattempts = range.getCell(i,1).getValue()
+         pplist[1] = pplist[1]+ndeaths
+         pplist[2] = pplist[2]+nattempts
+         var formerpp = pplist[0]
+         var a = -0.5
+         for ( var j=1 ; j<range.getCell(i,1).getValue()+1; j++)
+         {
+          var a = a+ndeaths/nattempts
+          if (a>0)
+          {
+            pplist[0] = pplist[0]-0.12*(pplist[0])
+            a=a-1
+          }
+          pplist[0] = 0.01*(10-pplist[0])+0.002+pplist[0]   
+         }
+       }
+  }
+    return pplist
+  }
+
+
+        """
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #######################################
+    
     #spits out a certain cell, test func
     @commands.command(pass_context=True)
     async def spit_cell(self,ctx,row,col,*sh_name):
@@ -299,7 +502,7 @@ class amabot(discord.Client):
         wsh = sh.worksheet("InfoParse")
 
         await self.bot.say("opening {}".format( ' '.join(list(sh_name))) )
-        wsh_ = sh.worksheet(' '.join(list(string)) )
+        wsh_ = sh.worksheet(' '.join(list(sh_name)) )
         
         await self.bot.say(wsh_.cell(row,col).value)
         
@@ -324,6 +527,39 @@ class amabot(discord.Client):
             raidIndex+=5
 
         await self.bot.say("There are {} raids this week.\n{}".format(str( int(raidIndex/5) ), raidTimes ) )
+
+
+
+    @commands.command(pass_context=True)
+    async def lineup(self,ctx):
+        "returns boogaloo"
+
+        if ctx.message.author.id == settings.owner:
+            webbrowser.open('https://docs.google.com/spreadsheets/d/18_dQWsIQy35jxuf7daSxQGfRFRs3_HJrlPqtZ5Pm6iE/', new=2)
+            await self.bot.say("Opened the spreadsheet Electric Boogaloo. <:blobuwu:351058556449062912>")
+            return
+        
+        await self.bot.say("<https://docs.google.com/spreadsheets/d/18_dQWsIQy35jxuf7daSxQGfRFRs3_HJrlPqtZ5Pm6iE/>")
+
+    @commands.command(pass_context=True)
+    async def main_sheet(self,ctx):
+        "returns pp sheet"
+
+        if ctx.message.author.id == settings.owner:
+            webbrowser.open('https://docs.google.com/spreadsheets/d/1gRFcj8uDgchpapSbimt_JyRRAbdGPY4lhmqM878cXl8/edit#gid=21311540', new=2)
+            await self.bot.say("Opened the spreadsheet 20man raid sheet. <:blobuwu:351058556449062912>")
+        else:
+            await self.bot.say("You do not have permissions. <:blobsob:317541132252872704>")
+
+    @commands.command(pass_context=True)
+    async def mechanics(self,ctx):
+        "returns mechanics list"
+
+        if ctx.message.author.id == settings.owner:
+            webbrowser.open('https://docs.google.com/spreadsheets/d/1kx-ODqPh4039d2ijzxefzJjjKcFJ8ovhQfTS2rQcD_I/edit#gid=1985626731',new=2)
+            await self.bot.say("Opened the spreadsheet 20man mechs. <:blobuwu:351058556449062912>")
+        else:
+            await self.bot.say("You do not have permissions. <:blobsob:317541132252872704>")
 
 def setup(bot):
     bot.add_cog(amabot(bot))
