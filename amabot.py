@@ -392,10 +392,10 @@ class amabot(discord.Client):
                 deaths= int(each[2])
                 attempts = int(each[0])
                 name = each[1]
-
+                
                 #we found the row for that person
                 for item in pp_chart:
-                    if name in item:
+                    if re.match(name,item[0],re.IGNORECASE):
                         item[2] = float(item[2])
                         
                         item[3]+= deaths
@@ -424,7 +424,7 @@ class amabot(discord.Client):
         update_range = pp_wsh.range(2,2,1+len(pp_chart),7)
         cols=len(pp_chart[0])
         for index in range(len(update_range)):
-            print(index)
+            #print(index)
             update_range[index].value=pp_chart[int(index/cols)][index%cols]
             
         await self.bot.say("uploading data")
