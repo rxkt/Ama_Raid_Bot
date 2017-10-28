@@ -20,7 +20,7 @@ no_member_found = """Unable to find you in the spreadsheet. Please go to
 
 {}
 
-to sign up for raids.""".format("https://docs.google.com/forms/d/e/1FAIpQLSfr_P7wEhtq85H2mt7VO2_DETBhK-N-ihg7bBImcwsq88GOEQ/viewform")
+to sign up for raids.""".format("https://docs.google.com/forms/d/e/1FAIpQLSfvhDhF1ko_iuCtTery4yjen2pzENy_vn5FpFOXmP8QZCF0iw/viewform")
 
 class amabot(discord.Client):
     """Cog that scrapes Amaterasu's Raid spreadsheets!"""
@@ -36,7 +36,13 @@ class amabot(discord.Client):
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
     @commands.command(pass_context=True)
     async def notify(self, ctx,memberIndex = 2):
-        """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time.""" 
+        """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time."""
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
 
         server = ctx.message.server
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
@@ -49,9 +55,10 @@ class amabot(discord.Client):
         cells=[x for x in wsh.get_all_values()[memberIndex-1:] if x[0]!=""]
         
         for each in cells:
+            link = each[3]
             prevDate = datetime.datetime.strptime(each[0],"%m/%d/%Y %H:%M:%S")
             
-            if abs((prevDate-todayDate).days) > 4:
+            if True:#abs((prevDate-todayDate).days) > 4:
                 member = server.get_member_named( each[1].strip(' ') )
                 if member == None:
                     #given discord tag failed, let's try using the ID from assign_ids 
@@ -80,8 +87,6 @@ class amabot(discord.Client):
             memberIndex+=1
 
 
-
-        
     
     #Sends a discord message to the user that called this function with their respective link to their google forms
     @commands.command(pass_context=True)
@@ -192,15 +197,51 @@ class amabot(discord.Client):
             else:
                 message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n" 
 
+        #probably dont need this anymore
+        '''
+        
         if len(pp_list)!= 0:
             await self.bot.send_message(author,message)
         else:
             await self.bot.send_message(author,"The system is currently under maintenance. Check back later.")
-    
+        '''
 
-    
+    @commands.command(pass_context=True)
+    async def points(self, ctx, *string):
+        "Tells you your brooch points that you've earned."
 
-    
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("InfoParse")
+        boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+        points_wsh = boogaloo.worksheet("Points")
+
+        string = ' '.join(string)
+        if len(string)==0:
+            #string= author
+            author = ctx.message.author
+            id_values=wsh.col_values(5)
+            name_values=wsh.col_values(3)
+            try:
+                name = name_values[id_values.index(author.id)]
+                points_values = points_wsh.col_values(2)
+                main_char_values = points_wsh.col_values(3)
+                await self.bot.say("Hi {}, you have {} brooch points.".format(name,points_values[main_char_values.index(name)]))
+            except:
+                await self.bot.say("You're not on the spreadsheet.")
+        else:
+            data= wsh.get_all_values()
+            for row in data:
+                for index in range(len(row)):
+                    if re.match(row[index],string,re.IGNORECASE) and len(row[index]) == len(string):
+                        name = row[2]
+                        points_values = points_wsh.col_values(2)
+                        main_char_values = points_wsh.col_values(3)
+                        await self.bot.say("{} has {} brooch points.".format(name,points_values[main_char_values.index(name)]))
+
+        
     #Assigns the discord IDs for each given discord tag on the spreadsheet
     @commands.command(pass_context=True)
     async def assign_ids(self, ctx, memberIndex=2):
@@ -212,32 +253,38 @@ class amabot(discord.Client):
         gc = gspread.authorize(credentials)
         sh = gc.open("20man raid sheet")
         wsh = sh.worksheet("InfoParse")
+        raw_data_wsh = sh.worksheet("RawData")
         await self.bot.say("opened sheet . . .")
 
+        time_values = [x for x in wsh.col_values(1) if x!= ""]
+        tags_values = wsh.col_values(2)
+        id_values = wsh.col_values(5)
+        tags_range = wsh.range(2,2,1+len(time_values),2)
+        ids_range = raw_data_wsh.range(2,143,1+len(time_values),143)
         
-        while True:
-            timestamp = wsh.cell(memberIndex,1).value
-            discord_tag = wsh.cell(memberIndex, 2).value
-            name = wsh.cell(memberIndex, 3).value
-            if timestamp=='':
-                break
-            
-            member = server.get_member_named( wsh.cell(memberIndex,2).value.strip(' ') )
-            if member==None:
-                await self.bot.say("Did not update ID for {}".format(name) )
-            else:
-                wsh.update_cell(memberIndex, 5, member.id)
-                await self.bot.say("Updated ID for {}".format(name) )
-
-            memberIndex+=1
+        for index in range(len(time_values)):
+            if tags_range[index].value != "":
+                try:
+                    member = server.get_member_named( tags_range[index].value.strip(' ') )
+                    ids_range[index].value = member.id
+                    print("Updated ID for {}".format(tags_range[index].value))
+                except:
+                    await self.bot.say("Could not get ID for {}".format(tags_range[index].value))
         
         
+        wsh.update_cells(ids_range)
         
 
     #Notifies the nth raid on the spreadsheet (in case for raids created at the last moment.)
     @commands.command(pass_context=True)
     async def notify_raid(self, ctx,raid_index:int,*string):
         "Notifies the nth raid with a given string."
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
 
         server=ctx.message.server
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
@@ -272,6 +319,12 @@ class amabot(discord.Client):
     @commands.command(pass_context=True)
     async def alert_reds(self, ctx):
         "Alerts all people with red cards to pay their fines if they haven't already."
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
 
         server=ctx.message.server
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
@@ -309,8 +362,15 @@ class amabot(discord.Client):
 
 
     @commands.command(pass_context=True)
-    async def updatepp(self):
+    async def updatepp(self,ctx):
         "Updates pp because google scripts run really slowly..."
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles and "Spreadsheet" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+        
         credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
         gc = gspread.authorize(credentials)
         sh = gc.open("20man raid sheet")
@@ -395,7 +455,7 @@ class amabot(discord.Client):
                 
                 #we found the row for that person
                 for item in pp_chart:
-                    if re.match(name,item[0],re.IGNORECASE):
+                    if re.match(name,item[0],re.IGNORECASE) and len(name)== len(item[0]):
                         item[2] = float(item[2])
                         
                         item[3]+= deaths
@@ -479,18 +539,339 @@ function calculatepp(name, range, pplist, raidnumber){
         """
 
 
+    @commands.command(pass_context=True)
+    async def addclear(self,ctx,name:str ,freebrooch:bool=False):
+        "populates the boogaloo sheet's clear tab with the most recent raid that cleared\n use _addclear <name> true if they got a free brooch"
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+
+        await self.bot.say("opened death sheets . . .")
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
+        await self.bot.say("downloading cells...")
+        cells = death_wsh.get_all_values()
+        
+        await self.bot.say("removing useless columns...")
+        #a 2D list in the same format as the spreadsheet, but trimmed the top and empty columns. format: attempts,token,name,deaths
+        raids = [[cells[j][i] for i in range(len(cells[j])) if i%6 in [2,3,4,5] ] for j in range(3,len(cells)) ]
+        while raids[0][-4] == "":
+            raids = [x[:-4] for x in raids]
+        last_raid = [x[-4:] for x in raids]
+
+        
+        names = [x[2] for x in last_raid if x[1] != "" and int(x[1]) == 1]
+
+        ##remove name if regex exists and put it at index 1. if not found, return and say char is not in there.
+        matches= []
+        for x in names:
+            if (re.match(x,name,re.IGNORECASE) and len(name)== len(x) ):
+                matches.append(x)
+        if len(matches)==0:
+            await self.bot.say("This person isn't in the raid.")
+            return
+
+        names = [x for x in names if not (re.match(x,name,re.IGNORECASE) and len(name)== len(x) ) ]
+        names.insert(0,name)
 
 
+        boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+        clear_wsh = boogaloo.worksheet("Raid Clears")
+        row=clear_wsh.row_values(2)
+        row = [x for x in row if x!=""]
+        raid_index = len(row)+1
+        update_range = clear_wsh.range(2,raid_index,25,raid_index)
+        for index in range( len(names) ):
+            update_range[index].value = names[index]
+        if freebrooch:
+            update_range[-1].value = name
+        clear_wsh.update_cells(update_range)
+
+        await self.bot.say("finished")
+        
+    @commands.command(pass_context=True)
+    async def addbonus(self,ctx):
+        "gives bonus points to people who performed well"
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
+        cells = death_wsh.get_all_values()
+        raids = [[cells[j][i] for i in range(len(cells[j])) if i%6 in [2,3,4,5] ] for j in range(3,len(cells)) ]
+        while raids[0][-4] == "":
+            raids = [x[:-4] for x in raids]
+        last_raid = [x[-4:] for x in raids]
+
+        #give points to those who have the max # of attempts and have never died
+        attempts = max([int(x[0]) for x in last_raid if x[0]!=''])
+        zerodeathclub = []
+        for x in last_raid:
+            if x[0] != '' and int(x[0])==attempts and int(x[1])==1 and int(x[3])==0:
+                zerodeathclub.append(x[2])
+
+        info_wsh = sh.worksheet("InfoParse")
+        info = info_wsh.get_all_values()
+        print (zerodeathclub)
+        #replace the names of the alts with their main
+        for index in range(len(zerodeathclub)):
+            name=zerodeathclub[index]
+            for row in info:
+                for each in row:
+                    if re.match(name,each,re.IGNORECASE) and len(name)== len(each):
+                        zerodeathclub[index]=row[2]
+
+        #open the points sheet and give out the bonus points
+        boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+        points_wsh = boogaloo.worksheet("Points")
+        names = [x for x in points_wsh.col_values(3) if x != ""][1:]
+        update_range = points_wsh.range(3,6,len(names)+2,6)
+
+        if len(update_range) != len (names):
+            await self.bot.say("please make sure there are enough 0's on the brooch points sheet")
+            return
+        for name in zerodeathclub:
+            for index in range( len(update_range) ):
+                if re.match(name,names[index], re.IGNORECASE) and len(name) == len(names[index]) :
+                    update_range[index].value = float(update_range[index].value)+ 0.25
+                    await self.bot.say("gave 0.25 to "+name)
+        points_wsh.update_cells(update_range)
+                    
+        await self.bot.say("finished")
 
 
+    @commands.command(pass_context=True)
+    async def setupraid(self,ctx,raid_index:int):
+        "Sets up the raid in the death record spreadsheet."
+
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+        
+        server=ctx.message.server
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
+        wsh_raids = sh.worksheet("raid lineup")
+        await self.bot.say("opened sheets . . .")
+        raid_col = (raid_index-1)*5+1
+        raid_row = 3 
+
+        
+        #get the characters we want
+        characters = [x.value for x in wsh_raids.range(raid_row,raid_col,raid_row+9,raid_col+3) if x.value not in ["","Raid Type","Phase 1-4","Phase 4 Practice"]]
+        #get the column number
+        rowoneary = death_wsh.row_values(1)
+        rowone = [rowoneary[i] for i in range(len( rowoneary )) if i%6==2]
+        col_num= rowone.index("#DIV/0!")*6+3
+
+        #update attempts
+        attempt_range = death_wsh.range(4,col_num,23,col_num)
+        for each in attempt_range:
+            each.value = 0
+        death_wsh.update_cells(attempt_range)
+        #update names
+        name_range=death_wsh.range(4,col_num+2,23,col_num+2)
+        for index in range(len(name_range)):
+            name_range[index].value = characters[index]
+        death_wsh.update_cells(name_range)
+        #update deaths
+        death_range = death_wsh.range(4,col_num+3,23,col_num+3)
+        for each in death_range:
+            each.value =0
+        death_wsh.update_cells(death_range)
+            
+        await self.bot.say("Finished")
 
 
+    @commands.command(pass_context=True)
+    async def addattempt(self,ctx,*string):
+        "Adds an attempt to most recent raid in death record spreadsheet."
+        
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+        
+        server=ctx.message.server
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
 
+        #get the column number
+        rowary = death_wsh.row_values(4)
+        rowfour = [rowary[i] for i in range(len( rowary )) if i%6==2 and rowary[i]!=""]
+        col_num=len(rowfour)*6-3
 
+        toggle_values = [x for x in death_wsh.col_values(col_num+1)[3:] if x!=""]
+        
+        attempt_range = death_wsh.range(4,col_num,3+len(toggle_values),col_num)
+        for index in range(len(toggle_values)):#each in attempt_range:
+            if int(toggle_values[index])!=0:
+                if attempt_range[index].value!="":
+                    attempt_range[index].value=int(attempt_range[index].value)+1
+                else:
+                    attempt_range[index].value=1
+        death_wsh.update_cells(attempt_range)
+        deaths = " ".join(string)
+        
+        if len(deaths)>0:
+            death_range = death_wsh.range(4,col_num+2,3+len(toggle_values),col_num+3)
+            death_list = [x.strip(' ') for x in deaths.split(',')]
+            for dead_person in death_list:
+                for index in range(len(death_range)):
+                    name = death_range[index].value
+                    #must convert to string since cells may hold ints, not strings
+                    if re.match(str(dead_person),str(name),re.IGNORECASE) and len(str(name))== len(str(dead_person)):
+                        death_range[index+1].value = int(death_range[index+1].value)+1
+                        
+            death_wsh.update_cells(death_range)
 
+        await self.bot.say("finished")
 
+    @commands.command(pass_context=True)
+    async def sub(self,ctx,*string):
+        "Subs 1 person out for another in the most recent raid in the death record spreadsheet."
 
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+
+        string = ' '.join(string)
+        names = [x.strip(' ') for x in string.split(',')]
+        if len(string)==0 or ',' not in string:
+            await self.bot.say("Please enter subbed,subber")
+            return
+        
+        server=ctx.message.server
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
+
+        #get the column number
+        rowary = death_wsh.row_values(4)
+        rowfour = [rowary[i] for i in range(len( rowary )) if i%6==2 and rowary[i]!=""]
+        col_num=len(rowfour)*6-3
+
+        toggle_values = [x for x in death_wsh.col_values(col_num+1)[3:] if x!= ""]
+        #range will have 1 extra row to "prepare" for new person
+        toggle_range = death_wsh.range(4,col_num+1,4+len(toggle_values),col_num+1)
+        name_range = death_wsh.range(4,col_num+2,4+len(toggle_values),col_num+2)
+        death_range = death_wsh.range(4,col_num+3,4+len(toggle_values),col_num+3)
+
+        #check subbed
+        #since regex can't match str length well
+        name_values = [x.value for x in name_range if len(x.value) == len(names[0])]
+        r = re.compile(names[0],re.IGNORECASE)
+        newlist = list(filter(r.match, name_values))
+        if len(newlist)==0:
+            await self.bot.say("{} not found.".format(names[0]))
+            return
+        subbed=newlist[0]
+        #check subber
+        name_values = [x.value for x in name_range if len(x.value) == len(names[1])]
+        r = re.compile(names[1],re.IGNORECASE)
+        newlist = list(filter(r.match, name_values))
+        
+        name_values = [x.value for x in name_range]
+        if len(newlist)==0:
+            #add
+            toggle_range[name_values.index(subbed)].value = 0
+            toggle_range[-1].value=1
+            name_range[-1].value=names[1]
+            death_range[-1].value=0
+            death_wsh.update_cells(toggle_range)
+            death_wsh.update_cells(death_range)
+            death_wsh.update_cells(name_range)
+        else:
+            toggle_range[name_values.index(subbed)].value = 0
+            toggle_range[name_values.index(newlist[0])].value = 1
+            death_wsh.update_cells(toggle_range)
+        await self.bot.say("finished")
+
+    @commands.command(pass_context=True)
+    async def status(self,ctx):
+        "Shows death record of current raid."
+        
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" not in roles and "Spreadsheet" not in roles:
+            await self.bot.say("You don't have power to do that.")
+            return
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        death_wsh = sh.worksheet("Death record2")
+        #get the column number
+        rowary = death_wsh.row_values(4)
+        rowfour = [rowary[i] for i in range(len( rowary )) if i%6==2 and rowary[i]!=""]
+        col_num=len(rowfour)*6-3
+
+        
+        num_players = len([x for x in death_wsh.col_values(col_num+1)[3:] if x!= ""])
+        #await self.bot.say(num_players)
+        raid_range=death_wsh.range(3,col_num,2+num_players,col_num+3)
+        output="Current raid status:\n"
+        for index in range(len(raid_range)):
+            output+="{}\t".format(raid_range[index].value)
+            if index%4==3:
+                output+="\n"
+        await self.bot.say(output)
     #######################################
+    #functions for my lazy butt
+
+    @commands.command(pass_context=True)
+    async def raidcommands(self,ctx):
+        "returns a list of useful commands for raid"
+
+        #the ugliest string ever
+        
+        string="```\n"
+        string+="_pp: Returns your performance for your characters.\n"
+        string+="_link: Makes grillbot DM you your link.\n"
+        string+="_lineup: Returns a link to the raid lineup sheet.\n"
+        string+="_points [character]: Returns the amount of brooch points you have.\n"
+        string+="\n"
+        author = ctx.message.author
+        roles = [x.name for x in author.roles]
+        if "Power" in roles:
+            string+="<> is required parameter, [] is optional.\n"
+            string+="_notify [index]: Notifies people to update their HH20 form.\n"
+            string+="_notify_raid <index> <string>: Notifies people in the <index>th raid with <string>.\n"
+            string+="_alert_reds: Wake-up call to people with red-cards.\n"
+            string+="_updatepp: Updates PP in a blink of an eye. or at least better than google spreadsheets\n"
+            string+="_addclear <brooch winner> [true if free brooch]: Updates last clear on Boogaloo sheet.\n"
+            string+="_addbonus: Gives bonus brooch points to 0-death-club people.\n"
+            string+="_setupraid <index>: Creates the raid in death record spreadsheet.\n"
+            string+="_addattempt [name1,name2,name3...]: Adds 1 attempt to most recent raid. Deaths optional.\n"
+            string+="_sub <subbed>,<subber>: Manages subbing on most recent raid on death record sheet.\n"
+            string+="_status: Shows the current raid in death record sheet.\n"
+        
+        string+="```"
+        await self.bot.say(string)
+
     
     #spits out a certain cell, test func
     @commands.command(pass_context=True)
@@ -510,7 +891,7 @@ function calculatepp(name, range, pplist, raidnumber){
     
     # Lists all raids not yet occurred. useless for now, may want to put this into a PM.
     @commands.command()
-    async def raidtimes(self):
+    async def raids(self):
         "Lists all the raid that have not yet occurred."
 
         await self.bot.say("Searching the spreadsheets for raids...")
@@ -521,13 +902,15 @@ function calculatepp(name, range, pplist, raidnumber){
         wsh = sh.worksheet("raid lineup")
 
         raidIndex = 1
-        raidTimes=""
-        
-        while (wsh.cell(1,raidIndex).value != '' ):
-            raidTimes+= "{}) {}\n ".format( (raidIndex/5+1) , wsh.cell(1,raidIndex).value )
-            raidIndex+=5
+        raidTimes="This week's raids:\n"
 
-        await self.bot.say("There are {} raids this week.\n{}".format(str( int(raidIndex/5) ), raidTimes ) )
+        raids = [x for x in wsh.row_values(1) if x not in ['','EDT']]
+        raid_types = [x for x in wsh.row_values(21) if x != '']
+        
+        for index in range(len(raids)):
+            raidTimes+="{}) {}\t *{}*\n".format(index+1,raids[index],raid_types[index])
+
+        await self.bot.say(raidTimes)
 
 
 
