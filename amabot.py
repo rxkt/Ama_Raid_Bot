@@ -833,11 +833,13 @@ function calculatepp(name, range, pplist, raidnumber){
         num_players = len([x for x in death_wsh.col_values(col_num+1)[3:] if x!= ""])
         #await self.bot.say(num_players)
         raid_range=death_wsh.range(3,col_num,2+num_players,col_num+3)
-        output="Current raid status:\n"
+        output="Current raid status:\n```"
+        longest_name_len = max([len(x.value) for x in death_wsh.range(3,col_num+2,2+num_players,col_num+2)])
         for index in range(len(raid_range)):
-            output+="{}\t".format(raid_range[index].value)
+            output+="{message:{fill}{align}{width}}".format(message=raid_range[index].value,fill=' ',align='^' if index%4==0 else '<',width=[9,3,longest_name_len+1,1][index%4] )
             if index%4==3:
                 output+="\n"
+        output+="```"
         await self.bot.say(output)
     #######################################
     #functions for my lazy butt
