@@ -34,7 +34,7 @@ class amabot(discord.Client):
 
 
     #When called, notifies all users who have not updated their spreadsheet within the past week to do so.
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def notify(self, ctx,memberIndex = 2):
         """Mentions all people on the spreadsheet whose timestamps on their form responses are not updated for a period of time."""
 
@@ -197,14 +197,13 @@ class amabot(discord.Client):
             else:
                 message+= "You have very few runs or are dying a bit too much. Speak to Rxkt for assistance so he can help you!\n" 
 
-        #probably dont need this anymore
-        '''
         
-        if len(pp_list)!= 0:
-            await self.bot.send_message(author,message)
-        else:
-            await self.bot.send_message(author,"The system is currently under maintenance. Check back later.")
-        '''
+        
+        
+        
+        await self.bot.send_message(author,message)
+        
+        
 
     @commands.command(pass_context=True)
     async def points(self, ctx, *string):
@@ -243,7 +242,7 @@ class amabot(discord.Client):
 
         
     #Assigns the discord IDs for each given discord tag on the spreadsheet
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def assign_ids(self, ctx, memberIndex=2):
         "Updates the ID of every discord member on the spreadsheet."
 
@@ -276,7 +275,7 @@ class amabot(discord.Client):
         
 
     #Notifies the nth raid on the spreadsheet (in case for raids created at the last moment.)
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def notify_raid(self, ctx,raid_index:int,*string):
         "Notifies the nth raid with a given string."
 
@@ -316,7 +315,7 @@ class amabot(discord.Client):
         await self.bot.say("Finished") 
 
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def alert_reds(self, ctx):
         "Alerts all people with red cards to pay their fines if they haven't already."
 
@@ -361,7 +360,7 @@ class amabot(discord.Client):
 
 
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def updatepp(self,ctx):
         "Updates pp because google scripts run really slowly..."
 
@@ -539,7 +538,7 @@ function calculatepp(name, range, pplist, raidnumber){
         """
 
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def addclear(self,ctx,name:str ,freebrooch:bool=False):
         "populates the boogaloo sheet's clear tab with the most recent raid that cleared\n use _addclear <name> true if they got a free brooch"
 
@@ -595,7 +594,7 @@ function calculatepp(name, range, pplist, raidnumber){
 
         await self.bot.say("finished")
         
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def addbonus(self,ctx):
         "gives bonus points to people who performed well"
 
@@ -653,7 +652,7 @@ function calculatepp(name, range, pplist, raidnumber){
         await self.bot.say("finished")
 
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def setupraid(self,ctx,raid_index:int):
         "Sets up the raid in the death record spreadsheet."
 
@@ -700,7 +699,7 @@ function calculatepp(name, range, pplist, raidnumber){
         await self.bot.say("Finished")
 
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def addattempt(self,ctx,*string):
         "Adds an attempt to most recent raid in death record spreadsheet."
         
@@ -747,7 +746,7 @@ function calculatepp(name, range, pplist, raidnumber){
 
         await self.bot.say("finished")
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def sub(self,ctx,*string):
         "Subs 1 person out for another in the most recent raid in the death record spreadsheet."
 
@@ -810,7 +809,7 @@ function calculatepp(name, range, pplist, raidnumber){
             death_wsh.update_cells(toggle_range)
         await self.bot.say("finished")
 
-    @commands.command(pass_context=True)
+    @commands.command(no_pm=True,pass_context=True)
     async def status(self,ctx):
         "Shows death record of current raid."
         
@@ -832,17 +831,144 @@ function calculatepp(name, range, pplist, raidnumber){
         
         num_players = len([x for x in death_wsh.col_values(col_num+1)[3:] if x!= ""])
         #await self.bot.say(num_players)
-        raid_range=death_wsh.range(3,col_num,2+num_players,col_num+3)
+        raid_range=death_wsh.range(3,col_num,3+num_players,col_num+3)
         output="Current raid status:\n```"
-        longest_name_len = max([len(x.value) for x in death_wsh.range(3,col_num+2,2+num_players,col_num+2)])
+        longest_name_len = max([len(x.value) for x in death_wsh.range(4,col_num+2,3+num_players,col_num+2)])
         for index in range(len(raid_range)):
             output+="{message:{fill}{align}{width}}".format(message=raid_range[index].value,fill=' ',align='^' if index%4==0 else '<',width=[9,3,longest_name_len+1,1][index%4] )
             if index%4==3:
                 output+="\n"
         output+="```"
         await self.bot.say(output)
-    #######################################
-    #functions for my lazy butt
+
+    ##-----form management functions-----
+    
+    def _open_data(self):
+        "Opens spreadsheet"
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("RawData(BETA)")
+        return wsh
+
+    @commands.group(pass_context=True)
+    async def form(self,ctx):
+        "Function that will replace & overhaul the form-spreadsheet system"
+        if ctx.invoked_subcommand is None:
+            await self.bot.send_cmd_help(ctx)
+            return
+
+    @form.command(pass_context=True,name="status")
+    async def _form_status(self,ctx):
+        "Shows you your current raid signup status."
+
+        wsh = self._open_data()
+        author= ctx.message.author
+        ids = [x for x in wsh.col_values(3) if x!= ""]
+        if author.id not in ids:
+            await self.bot.say("You are not on the spreadsheet.")
+        else:
+            row_num = ids.index(author.id)+1
+            row = wsh.row_values(row_num)
+            string = "*Last updated: {}*```\n".format(row[0])
+            string += "Characters:\n"
+            string += "Main: {}\n".format(row[1])
+            for index in range(len(row[11:])):
+                if row[index+11] != "":
+                    string+= "Alt {}: {}\n".format(index+1,row[11+index])
+            string += "\nHours available:\n"
+            for index in range(len(row[4:11])):
+                string+= "{}: {}\n".format(["Tues","Wed ","Thur","Fri ","Sat ","Sun ","Mon "][index],row[4+index])
+            string +="```"
+            await self.bot.say(string)
+            
+    
+    @form.command(pass_context=True,name="add")
+    async def _form_add(self,ctx,name:str,_class:str):
+        "Add a character."
+        
+        wsh = self._open_data()
+        author = ctx.message.author
+        ids = [x for x in wsh.col_values(3) if x!= ""]
+        if author.id not in ids:
+            #set this as their main
+            row_num = len(ids)+1
+            update_range = wsh.range(row_num,1,row_num,3)
+            update_range[0].value = 0
+            update_range[1].value = "{},{}".format(name,_class)
+            update_range[2].value = author.id
+            wsh.update_cells(update_range)
+            await self.bot.say("Added {}.".format(name))
+        else:
+            row_num = ids.index(author.id)+1
+            update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
+            for each in update_range[11:]:
+                if each.value=="":
+                    each.value="{},{}".format(name,_class)
+                    wsh.update_cells(update_range)
+                    await self.bot.say("Added {}.".format(name))
+                    return
+            await self.bot.say("There is no more room for additional characters.")
+            return
+        
+    @form.command(pass_context=True,name="remove")
+    async def _form_remove(self,ctx,name:str):
+        "Remove a character."
+
+        wsh = self._open_data()
+        author = ctx.message.author
+        ids = [x for x in wsh.col_values(3) if x!= ""]
+        if author.id not in ids:
+            await self.bot.say("You are not on the spreadsheet.")
+        else:
+            row_num = ids.index(author.id)+1
+            update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
+            #check that its in your alt list
+            removed_char=None
+            alts_copy = []
+            for each in update_range[11:]:
+                alts_copy.append(each.value)
+                each.value=""
+            names = [x.split(',')[0].lower() for x in alts_copy]
+            if name.lower() not in names:
+                await self.bot.say("That character isn't in your roster OR you are trying to remove your main.")
+                return
+            for each in alts_copy:
+                if name.lower() == each.split(',')[0].lower():
+                    alts_copy.remove(each)
+            for each in update_range[11:]:
+                if len(alts_copy)>0:
+                    each.value=alts_copy.pop(0)
+            wsh.update_cells(update_range)
+
+
+    ##reminder that just renaming does not cut it. You must change pp/clears too!
+    @form.command(pass_context=True,name="rename")
+    async def _form_rename(self,ctx,old_name:str,new_name:str):
+        "Rename a character."
+
+        wsh = self._open_data()
+        author = ctx.message.author
+        ids = [x for x in wsh.col_values(3) if x!= ""]
+        if author.id not in ids:
+            await self.bot.say("You are not on the spreadsheet.")
+        else:
+            row_num = ids.index(author.id)+1
+            #check if want to rename main, then alts
+            main_name = wsh.cell(row_num,2).value
+            if main_name.split(',')[0].lower() == old_name.lower():
+                wsh.update_cell(row_num,2,"{},{}".format(new_name,main_name.split(',')[1]))
+            else:
+                update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
+                for each in update_range:
+                    if each.value.split(',')[0].lower() == old_name.lower():
+                        each.value="{},{}".format(new_name,each.value.split(',')[1])
+                        wsh.update_cells(update_range)
+                        return
+            
+    
+    
+    ##-----functions for my lazy butt-----
 
     @commands.command(pass_context=True)
     async def raidcommands(self,ctx):
@@ -876,7 +1002,6 @@ function calculatepp(name, range, pplist, raidnumber){
 
     
     #spits out a certain cell, test func
-    @commands.command(pass_context=True)
     async def spit_cell(self,ctx,row,col,*sh_name):
         "Spits out a certain cell on a certain spreadsheet"
         
