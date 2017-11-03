@@ -1,5 +1,7 @@
 import discord
 import datetime
+import time
+import locale
 import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -299,19 +301,19 @@ class amabot(discord.Client):
 
         #get the characters we want to message
         characters = [x.value for x in wsh_raids.range(raid_row,raid_col,raid_row+9,raid_col+3) if x.value!= "" ]
+
         #download all the data we search through offline so we don't need to keep looking for it... in 2d list form
-        data = [x for x in wsh.get_all_values()[1:] if x[0] != ""]
+        all_values = wsh.get_all_values()
+        data = [[i.lower() for i in x] for x in all_values[1:] if x[0] != ""]
         for name in characters:
-            r = re.compile(name,re.IGNORECASE)
-            for each in data:
-                results = filter(r.search, each)
-                if len( list(results) ) > 0:
+            for row in data:
+                if name.lower() in row:
                     try:
-                        member = server.get_member(each[4])
-                        await self.bot.send_message( server.get_member(each[4]), string_header + ' '.join(list(string)) ) 
+                        member = server.get_member(row[4])
+                        await self.bot.send_message( server.get_member(row[4]), string_header + ' '.join(list(string)) ) 
                     except:
                         await self.bot.say("Unable to find {} on roster.".format(name) )
-            
+
         await self.bot.say("Finished") 
 
 
@@ -687,6 +689,9 @@ function calculatepp(name, range, pplist, raidnumber){
         death_wsh.update_cells(attempt_range)
         #update names
         name_range=death_wsh.range(4,col_num+2,23,col_num+2)
+        if len(name_range)!=20:
+            await self.bot.say("Not all 20 spots are filled.")
+        
         for index in range(len(name_range)):
             name_range[index].value = characters[index]
         death_wsh.update_cells(name_range)
@@ -851,6 +856,13 @@ function calculatepp(name, range, pplist, raidnumber){
         wsh = sh.worksheet("RawData(BETA)")
         return wsh
 
+    async def _log_msg(self, string):
+        await self.bot.send_message(discord.Object("375455571526156288"),string)
+    
+    def _update_time(self,wsh,row):
+        wsh.update_cell(row,1,time.strftime("%m/%d/%Y %H:%M:%S"))
+
+    
     @commands.group(pass_context=True)
     async def form(self,ctx):
         "Function that will replace & overhaul the form-spreadsheet system"
@@ -864,7 +876,7 @@ function calculatepp(name, range, pplist, raidnumber){
 
         wsh = self._open_data()
         author= ctx.message.author
-        ids = [x for x in wsh.col_values(3) if x!= ""]
+        ids = [x for x in wsh.col_values(2) if x!= ""]
         if author.id not in ids:
             await self.bot.say("You are not on the spreadsheet.")
         else:
@@ -872,44 +884,68 @@ function calculatepp(name, range, pplist, raidnumber){
             row = wsh.row_values(row_num)
             string = "*Last updated: {}*```\n".format(row[0])
             string += "Characters:\n"
-            string += "Main: {}\n".format(row[1])
-            for index in range(len(row[11:])):
-                if row[index+11] != "":
-                    string+= "Alt {}: {}\n".format(index+1,row[11+index])
+            string += "Main: {},{}\n".format(row[2],row[3])
+            for index in range(16):
+                if row[index*2+4] != "":
+                    string+= "Alt {}: {},{}\n".format(index+1,row[index*2+4],row[5+2*index])
             string += "\nHours available:\n"
-            for index in range(len(row[4:11])):
-                string+= "{}: {}\n".format(["Tues","Wed ","Thur","Fri ","Sat ","Sun ","Mon "][index],row[4+index])
+            for index in range(7):
+                string+= "{}: {}\n".format(["Tues","Wed ","Thur","Fri ","Sat ","Sun ","Mon "][index],row[36+index])
             string +="```"
             await self.bot.say(string)
             
     
     @form.command(pass_context=True,name="add")
-    async def _form_add(self,ctx,name:str,_class:str):
+    async def _form_add(self,ctx,name:str,char_class:str):
         "Add a character."
+
+        if char_class.lower() not in ["brawler","lancer","warrior","slayer","archer","reaper","berserker","sorcerer","valkyrie","gunner","ninja","priest","mystic"]:
+            await self.bot.say("Please enter a valid class.")
+            return
+        
+        #update time
         
         wsh = self._open_data()
         author = ctx.message.author
-        ids = [x for x in wsh.col_values(3) if x!= ""]
+        ids = [x for x in wsh.col_values(2) if x!= ""]
         if author.id not in ids:
             #set this as their main
             row_num = len(ids)+1
-            update_range = wsh.range(row_num,1,row_num,3)
-            update_range[0].value = 0
-            update_range[1].value = "{},{}".format(name,_class)
-            update_range[2].value = author.id
+            self._update_time(wsh,row_num)
+            update_range = wsh.range(row_num,1,row_num,4)
+            update_range[2].value = name
+            update_range[1].value = author.id
+            update_range[3].value = char_class.lower().title()
             wsh.update_cells(update_range)
             await self.bot.say("Added {}.".format(name))
+            await self._log_msg("{}: :pencil: **SIGN UP:** {}({})".format(author.name,name,char_class))
         else:
             row_num = ids.index(author.id)+1
-            update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
-            for each in update_range[11:]:
-                if each.value=="":
-                    each.value="{},{}".format(name,_class)
-                    wsh.update_cells(update_range)
-                    await self.bot.say("Added {}.".format(name))
-                    return
-            await self.bot.say("There is no more room for additional characters.")
+            self._update_time(wsh,row_num)
+            update_range = wsh.range(row_num,5,row_num,36 )
+            index = len([x.value for x in update_range if x.value != ""])
+            if index >= len(update_range):
+                await self.bot.say("You cannot add more alts :(")
+                return
+            #check if in graveyard.
+            credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+            gc = gspread.authorize(credentials)
+            boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+            roster_wsh = boogaloo.worksheet("Roster")
+            #flatten 2d array to list
+            names = [i.lower() for x in roster_wsh.get_all_values() for i in x]
+            if name.lower() in names:
+                await self.bot.say("That character is already in the roster.")
+                return
+
+            #####################
+            update_range[index].value=name
+            update_range[index+1].value=char_class.lower().title()
+            wsh.update_cells(update_range)
+            await self.bot.say("Added {}.".format(name))
+            await self._log_msg("{}: :o: **ADD:** {}({})".format(author.name,name,char_class))
             return
+            
         
     @form.command(pass_context=True,name="remove")
     async def _form_remove(self,ctx,name:str):
@@ -917,59 +953,220 @@ function calculatepp(name, range, pplist, raidnumber){
 
         wsh = self._open_data()
         author = ctx.message.author
-        ids = [x for x in wsh.col_values(3) if x!= ""]
+        ids = [x for x in wsh.col_values(2) if x!= ""]
         if author.id not in ids:
             await self.bot.say("You are not on the spreadsheet.")
         else:
             row_num = ids.index(author.id)+1
+            #update time
+            self._update_time(wsh,row_num)    
             update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
-            #check that its in your alt list
-            removed_char=None
+            
             alts_copy = []
-            for each in update_range[11:]:
+            for each in update_range[4:36]:
                 alts_copy.append(each.value)
                 each.value=""
-            names = [x.split(',')[0].lower() for x in alts_copy]
+            names = [x.lower() for x in alts_copy]
             if name.lower() not in names:
-                await self.bot.say("That character isn't in your roster OR you are trying to remove your main.")
+                await self.bot.say("That character isn't one of your alts.")
                 return
-            for each in alts_copy:
-                if name.lower() == each.split(',')[0].lower():
-                    alts_copy.remove(each)
-            for each in update_range[11:]:
+            index = [x.lower() for x in alts_copy].index(name.lower())
+            alts_copy.pop(index)
+            alts_copy.pop(index)
+            for each in update_range[4:36]:
                 if len(alts_copy)>0:
                     each.value=alts_copy.pop(0)
             wsh.update_cells(update_range)
+            await self.bot.say("Removed {}. Remember to _form graveyard so you keep the brooch points.".format(name))
+            await self._log_msg("{}: :x: **REMOVE:** {}".format(author.name,name))
 
-
-    ##reminder that just renaming does not cut it. You must change pp/clears too!
+    ##reminder that just renaming does not cut it. You must change in death record. Remind to add to graveyard.
     @form.command(pass_context=True,name="rename")
     async def _form_rename(self,ctx,old_name:str,new_name:str):
         "Rename a character."
 
+        start_time = time.time()
         wsh = self._open_data()
         author = ctx.message.author
-        ids = [x for x in wsh.col_values(3) if x!= ""]
+        ids = [x for x in wsh.col_values(2) if x!= ""]
         if author.id not in ids:
             await self.bot.say("You are not on the spreadsheet.")
         else:
             row_num = ids.index(author.id)+1
-            #check if want to rename main, then alts
-            main_name = wsh.cell(row_num,2).value
-            if main_name.split(',')[0].lower() == old_name.lower():
-                wsh.update_cell(row_num,2,"{},{}".format(new_name,main_name.split(',')[1]))
+            #update time
+            self._update_time(wsh,row_num)
+            #check if they want to rename main, then alts
+            update_range = wsh.range(row_num,3,row_num,36 )
+            names = [update_range[index].value.lower() for index in range(len(update_range)) if index%2==0 and update_range[index].value!=""]
+            if old_name.lower() not in names:
+                await self.bot.say("Cannot find {}.".format(old_name))
+                return
             else:
-                update_range = wsh.range(row_num,1,row_num,len(wsh.row_values(row_num)) )
-                for each in update_range:
-                    if each.value.split(',')[0].lower() == old_name.lower():
-                        each.value="{},{}".format(new_name,each.value.split(',')[1])
-                        wsh.update_cells(update_range)
+                #rename in death record.
+                credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+                gc = gspread.authorize(credentials)
+                sh = gc.open("20man raid sheet")
+                death_wsh = sh.worksheet("Death record2")
+                _useless_row = death_wsh.row_values(4)
+                name_cols = [x for x in range(len(_useless_row)) if x%6==4 and _useless_row[x]!=""]
+                num_rows = len(death_wsh.col_values(1))
+
+                #the col number of appearances of old_name
+                appearances = []
+                data = death_wsh.get_all_values()
+                for i in range(len(data)):
+                    for j in name_cols:
+                        if data[i][j].lower()==old_name.lower():
+                            appearances.append(j)
+                
+                appearances = [x+1 for x in appearances]
+                to_update=[]
+                for col_num in appearances:
+                    #check which row the name falls in each column it appears in
+                    raid_range = death_wsh.range(4,col_num,35,col_num) #35=len(death_wsh.col_values(0)), 1 less call
+                    for each in raid_range:
+                        if each.value.lower()==old_name.lower():
+                            each.value=new_name
+                            to_update.append(each)
+
+                
+                update_range[2*names.index(old_name.lower())].value=new_name
+                death_wsh.update_cells(to_update)
+                wsh.update_cells(update_range)
+                await self.bot.say("Renamed {} to {}. Remember to _form graveyard so you keep the brooch points.".format(old_name,new_name))
+                await self._log_msg("{}: :warning: **RENAME:** {}->{}".format(author.name,old_name,new_name))
+
+                await self.bot.say("--- Execution time: %s seconds ---" % (time.time() - start_time))
+                return
+
+    @form.command(pass_context=True,name="graveyard")
+    async def _form_graveyard(self,ctx,operation:str,name:str):
+        "Add/removes a character to the graveyard. For retired/renamed/removed characters to retain the clear count."
+
+        author = ctx.message.author
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        info_wsh = sh.worksheet("InfoParse")
+        boogaloo = gc.open("Harrowhold 2: Electric Boogaloo")
+        roster_wsh = boogaloo.worksheet("Roster")
+
+        ids = info_wsh.col_values(5)
+        if author.id not in ids:
+            await self.bot.say("You are not on the spreadsheet.")
+            return
+        if operation.lower() not in ["add","remove"]:
+            await self.bot.say("Improper operation. Please select add or remove.")
+            return
+
+        names = [i.lower() for x in roster_wsh.get_all_values() for i in x]
+        main = info_wsh.cell(ids.index(author.id)+1,3).value
+        mains = roster_wsh.col_values(1)
+        row = mains.index(main)+1
+        row_values = roster_wsh.row_values(row)
+        #the graveyard is at the end of the row
+        row_values.reverse()
+        reverse_index = row_values.index("")
+
+        if operation.lower()=="add":
+            if name.lower() in names:
+                await self.bot.say("That character is already in the roster. Please remove it before adding it to the graveyard.")
+                return
+            roster_wsh.update_cell(row,len(row_values)-reverse_index,name)
+            await self.bot.say("Added {} to graveyard.".format(name))
+            await self._log_msg( "{}: :skull: **GRAVEYARD->add**: {}".format(author.name,name))
+
+        else:#operation=="remove"
+            if name.lower() not in names:
+                await self.bot.say("{} does not exist in your graveyard.".format(name))
+                return
+            temp_grave = []  
+            update_range = roster_wsh.range(row,len(row_values)-reverse_index+1,row,len(row_values)-1 )
+            for each in update_range:
+                if each.value.lower() != name.lower():
+                    temp_grave.append(each.value)
+                each.value=""
+            update_range.reverse()
+            temp_grave.reverse()
+            for index in range(len(update_range)):
+                if len(temp_grave)>0:
+                    update_range[index].value=temp_grave.pop(0)
+            roster_wsh.update_cells(update_range)
+            await self.bot.say("Removed {} from the graveyard.".format(name))
+            await self._log_msg( "{}: <:blobhyperthink:361641325193330690> **GRAVEYARD->remove**: {}".format(author.name,name))
+        
+        
+    @form.command(pass_context=True,name="times")
+    async def _form_times(self,ctx,day:str,*free_times):
+        "0=Noon, 12=Midnight, busy=Busy all day. You can use ranges (0-12) or commas (12,1,2,3,...)"
+
+        days = ["tuesday","wednesday","thursday","friday","saturday", "sunday","monday"]
+        word_search = [x for x in days if day in x]
+        if len(word_search) != 1:
+            #either no search found, or not a unique string, i.e "day" or "ay"
+            await self.bot.say("Please enter a correct day of the week.")
+            return
+        index = days.index(word_search[0])
+        #remove all those useless spaces
+        free_times = " ".join(free_times)
+        free_times = free_times.replace(" ","")
+        hour_ranges = free_times.split(",")
+        hours = []
+        for each in hour_ranges:
+            if "-" in each:
+                _range = each.split("-")
+                if "" in _range:
+                    await self.bot.say("Please enter a valid range <:blobfacepalm:324810235447607300>")
+                    return
+                for number in range(int(_range[0]),int(_range[1])+1):
+                    try:
+                        #check if they gave us time values in non-ascending order
+                        if len(hours) > 0 and hours[len(hours)-1] > number:
+                            await self.bot.say("Please enter the hours in order.")
+                            return
+                        hours.append(number)
+                    except:
+                        await self.bot.say("Please enter hours in a correct format.")
                         return
-            
-    
-    
+            else:
+                try:
+                    #busy all day, no numbers in string
+                    if free_times.lower()=="busy":
+                        self._update_time(wsh,row_num)
+                        wsh.update_cell(row_num,37+index,"Busy")
+                        await self.bot.say("Updated to BUSY on {}.".format(word_search[0]))
+                        return
+                    #check if they gave us time values in non-ascending order
+                    if len(hours) > 0 and hours[len(hours)-1] > int(each):
+                        await self.bot.say("Please enter the hours in order.")
+                        return
+                    
+                    hours.append(int(each))
+                except:
+                    await self.bot.say("Please enter hours in a correct format.")
+                    return
+
+        
+        hours_string=", ".join([["Noon","1:00 PM","2:00 PM","3:00 PM","4:00 PM","5:00 PM","6:00 PM","7:00 PM","8:00 PM","9:00 PM","10:00 PM","11:00 PM","Midnight"][x] for x in hours])
+        
+        wsh = self._open_data()
+        author = ctx.message.author
+        ids = [x for x in wsh.col_values(2) if x!= ""]
+        if author.id not in ids:
+            await self.bot.say("You are not on the spreadsheet.")
+        else:
+            row_num = ids.index(author.id)+1
+            #update time
+            self._update_time(wsh,row_num)
+            #await self.bot.say(hours_string)
+            wsh.update_cell(row_num,37+index,hours_string)
+            await self.bot.say("Updated times on {}.".format(word_search[0]))
     ##-----functions for my lazy butt-----
 
+            
+
+
+            
     @commands.command(pass_context=True)
     async def raidcommands(self,ctx):
         "returns a list of useful commands for raid"
@@ -1039,8 +1236,85 @@ function calculatepp(name, range, pplist, raidnumber){
 
         await self.bot.say(raidTimes)
 
+    @commands.command(pass_context=True)
+    async def myraids(self,ctx):
+        "Returns your raids."
+        locale.setlocale(locale.LC_TIME, "")
+        
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        #await self.bot.say("Opening Amaterasu's raid sheets...")
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("raid lineup")
+        info_wsh = sh.worksheet("InfoParse")
+        #await self.bot.say("Opening Manifest's raid sheets...")
+        mani_sh = gc.open("HH20 Raids - Manifest")
+        mani_wsh = mani_sh.worksheet("Raid Schedule")
+        #await self.bot.say("Searching both sheets...")
+        author = ctx.message.author
+        row_num = info_wsh.col_values(5).index(author.id)+1
+        row = info_wsh.row_values(row_num)
+        chars = [row[x].lower() for x in range(len(row)) if (x==2 or x>4) and row[x]!=""]
 
+        string="**RAIDS:**\n"
+        #ama raid
+        num_raids=len([x for x in wsh.row_values(2) if x!=""])/4
+        
+        values = wsh.get_all_values()
+        raids = [[i[x].lower() for x in range(len(i)) if x%5!= 4] for i in values[2:12] ] #cut out 5th column,lowercase
+        filtered_raids = []
+        for each in raids:
+            matches = [x for x in each if x in chars]
+            for name in matches:
+                index = each.index(name)
+                #append [name,time,raid_type,ama=0/mani=1]
+                filtered_raids.append( [name, values[0][int(index/4)*5] , values[8][int(index/4)*5 + 3] , 0] )
 
+        
+        
+        #mani raid
+        mani_raids="**MANIFEST RAIDS:**\n"
+        num_raids=len([x for x in mani_wsh.row_values(3) if x!=""])/4
+        values = mani_wsh.get_all_values()
+        raids = [[i[x].lower() for x in range(len(i)) if x%5!= 4] for i in values[2:12] ] #cut out 5th column,lowercase
+        for each in raids:
+            matches = [x for x in each if x in chars]
+            for name in matches:
+                #we need to normalize their spreadsheet's time format with ours...
+                index = each.index(name)
+                date_day = values[0][int(index/4)*5].split(" ")
+                day_value = ["Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][["Tue","Wed","Thu","Fri","Sat","Sun","Mon"].index(date_day[1].strip(" "))]
+                date_value = datetime.datetime.strptime( date_day[0].strip(" ") , "%m/%d").strftime("%b %d, ")
+                hour = values[0][int(index/4)*5 +1].split("-")[0]
+                if ":" not in hour:
+                    hour = hour.replace("PM",":00PM")
+                hour = hour.replace("PM","p")
+                raid_type = values[0][int(index/4)*5 +3].replace("p","Phase ")
+                filtered_raids.append([ name, (day_value+", " +date_value+hour).strip(" "), raid_type, 1])
+        
+        filtered_raids.sort(key=lambda x: datetime.datetime.strptime(x[1], "%A, %b %d, %I:%Mp"))
+
+        next_raid_index = 0
+        for each in filtered_raids:
+            strikeout= ""
+            if datetime.datetime.strptime(each[1]+"m","%A, %b %d, %I:%M%p").replace(year=2017) < datetime.datetime.now():
+                strikeout="~~"
+                next_raid_index+=1
+                
+            string+="{}:regional_indicator_{}:{}*({})*: **{}**{}\n".format(strikeout,"a" if each[3]==0 else "m",each[1],each[2],each[0].title(),strikeout)
+
+        time_remaining = datetime.datetime.strptime(filtered_raids[next_raid_index][1]+"m","%A, %b %d, %I:%M%p").replace(year=2017) - datetime.datetime.now()
+        secs = time_remaining.seconds % 60
+        mins = int(time_remaining.seconds/60)%60
+        hours = int(time_remaining.seconds/3600)
+        days = time_remaining.days
+        raid_type = ":regional_indicator_{}:{}".format("a" if filtered_raids[next_raid_index][3]==0 else "m","materasu" if filtered_raids[next_raid_index][3]==0 else "anifest")
+        string+="*Next raid by {} is in {}{}{}{}{}{}{} seconds.*".format( raid_type,
+                                                                        days if days>0 else ""," days, " if days>0 else "",
+                                                                        hours if hours>0 else ""," hours, " if hours>0 else "",
+                                                                        mins if mins>0 else ""," minutes, " if mins>0 else "", secs )
+        
+        await self.bot.say(string)
     @commands.command(pass_context=True)
     async def lineup(self,ctx):
         "returns boogaloo"
@@ -1052,6 +1326,18 @@ function calculatepp(name, range, pplist, raidnumber){
         
         await self.bot.say("<https://docs.google.com/spreadsheets/d/18_dQWsIQy35jxuf7daSxQGfRFRs3_HJrlPqtZ5Pm6iE/>")
 
+    @commands.command(pass_context=True)
+    async def addcols(self,ctx,numcols):
+        "Add cols"
+
+        await self.bot.say("opening sheets")
+        credentials = ServiceAccountCredentials.from_json_keyfile_name('data/spreadsheet/Ama30man-baa10dc23211.json', scope)
+        gc = gspread.authorize(credentials)
+        sh = gc.open("20man raid sheet")
+        wsh = sh.worksheet("Death record2")
+        wsh.add_cols(numcols)
+        await self.bot.say("finished")
+        
     @commands.command(pass_context=True)
     async def main_sheet(self,ctx):
         "returns pp sheet"
